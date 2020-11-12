@@ -26,6 +26,7 @@ public:
   ~CodeGenerator();
   void generate_code();
 	InstructionSequence *get_code();
+	int get_vreg_count();
   
 private:
 	std::map<int, int> compare_to_jump_inverted = {{AST_COMPARE_LT, HINS_JGTE}, {AST_COMPARE_GT, HINS_JLTE},
@@ -67,7 +68,7 @@ private:
 	void rest_vreg();
 	std::string alloc_label();
 
-	
+
 };
 
 
@@ -143,14 +144,19 @@ void CodeGenerator::visit_read(struct Node *ast){
 
 void CodeGenerator::visit_write(struct Node *ast){
 	struct Node* expression = node_get_kid(ast, 0);
-
+	int tag = node_get_tag(expression);
 	visit_expression(expression);
 
-	struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());	
-	struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+	Operand *exp_oprand;
+	if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+		Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
+		exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+		this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
+	} else {
+		exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
+	}
 	
-	this->code->add_instruction(new Instruction(HINS_LOAD_INT, *oprand, *vreg_ref));
-	this->code->add_instruction(new Instruction(HINS_WRITE_INT, *oprand));
+	this->code->add_instruction(new Instruction(HINS_WRITE_INT, *exp_oprand));
 }
 
 void CodeGenerator::visit_var_ref(struct Node *ast){
@@ -497,6 +503,10 @@ int CodeGenerator::alloc_vreg(){
 	return this->vreg_count++;
 }
 
+int CodeGenerator::get_vreg_count(){
+	return this->max_vreg_count;
+}
+
 std::string CodeGenerator::alloc_label(){
 	std::string label = ".L";
 	return label + std::to_string(this->label_count++);
@@ -541,4 +551,8 @@ void generator_generate_highlevel(struct CodeGenerator *cgt){
 
 struct InstructionSequence *generator_get_highlevel(struct CodeGenerator *cgt){
 	return cgt->get_code();
+}
+
+int get_vreg_offset(struct CodeGenerator *cgt){
+	return cgt->get_vreg_count();
 }

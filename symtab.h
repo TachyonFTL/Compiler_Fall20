@@ -7,6 +7,10 @@
 #include <vector>
 
 // main calss for symbol table
+class SymbolTable;
+
+#ifdef __cplusplus
+
 class SymbolTable {
 private:
   SymbolTable *parent;
@@ -72,5 +76,13 @@ public:
   int get_size();
   
 };
+extern "C" {
+#endif
+
+int get_var_offset(SymbolTable *symtab);
+
+#ifdef __cplusplus
+}
+#endif // __cplusplus
 
 #endif

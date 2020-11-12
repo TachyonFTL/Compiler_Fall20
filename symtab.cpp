@@ -110,6 +110,9 @@ SymbolTable *SymbolTable::get_parent() {
   return this->parent;
 }
 
+int get_var_offset(SymbolTable *symtab){
+  return symtab->get_current_offset();
+}
 // Derived class Record type
 ///////////////////////////////////
 Record_type::Record_type(std::string name, SymbolTable * fields): Type(name) {

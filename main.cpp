@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <unistd.h> // for getopt
 #include "node.h"
+#include "symtab.h"
 #include "util.h"
 #include "grammar_symbols.h"
 #include "ast.h"
@@ -9,6 +10,8 @@
 #include "context.h"
 #include "codegen.h"
 #include "highlevel.h"
+#include "lowlevelgen.h"
+#include "x86_64.h"
 
 extern "C" {
 int yyparse(void);
@@ -87,9 +90,15 @@ int main(int argc, char **argv) {
     generator_generate_highlevel(cgt);
     struct InstructionSequence *code = generator_get_highlevel(cgt);
 
-    PrintHighLevelInstructionSequence print_ins(code);
-    print_ins.print();
+    //PrintHighLevelInstructionSequence print_ins(code);
+    //print_ins.print();
+    struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, get_var_offset(get_sym_tab(ctx)), get_vreg_offset(cgt));
 
+    generator_generate_lowlevel(lowlevel_generator);
+    struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
+    
+    PrintX86_64InstructionSequence print_ins(lowlevel);
+    print_ins.print();
   }
 
   return 0;

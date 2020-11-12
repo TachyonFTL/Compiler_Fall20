@@ -20,6 +20,7 @@ enum X86_64Reg {
   MREG_R13,
   MREG_R14,
   MREG_R15,
+  MREG_EAX,
 };
 
 enum X86_64Instruction {
@@ -38,6 +39,11 @@ enum X86_64Instruction {
   MINS_CMPQ,
   MINS_CALL,
   MINS_IMULQ,
+  MINS_EPTY,
+  MINS_CQTO,
+  MINS_IDIVQ,
+  MINS_RET,
+  MINS_MOVL
 };
 
 class PrintX86_64InstructionSequence : public PrintInstructionSequence {

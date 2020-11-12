@@ -10,6 +10,7 @@ std::string PrintX86_64InstructionSequence::get_opcode_name(int opcode) {
   switch (opcode) {
   case MINS_NOP:  return "nop";
   case MINS_MOVQ: return "movq";
+  case MINS_MOVL: return "movl";
   case MINS_ADDQ: return "addq";
   case MINS_SUBQ: return "subq";
   case MINS_LEAQ: return "leaq";
@@ -23,6 +24,11 @@ std::string PrintX86_64InstructionSequence::get_opcode_name(int opcode) {
   case MINS_CMPQ: return "cmpq";
   case MINS_CALL: return "call";
   case MINS_IMULQ: return "imulq";
+  case MINS_IDIVQ: return "idivq";
+  case MINS_EPTY: return "";
+  case MINS_CQTO: return "cqto";
+  case MINS_RET: return "ret";
+  
   default:
     assert(false);
     s = "<invalid>";
@@ -49,6 +55,9 @@ std::string PrintX86_64InstructionSequence::get_mreg_name(int regnum) {
   case MREG_R13: s = "%r13"; break;
   case MREG_R14: s = "%r14"; break;
   case MREG_R15: s = "%r15"; break;
+  case MREG_EAX: s = "%eax"; break;
+
+  
   default:
     assert(false);
     s = "<invalid>";

@@ -121,11 +121,11 @@ type
 
 expression
   : term  { $$ = $1; }  
-  | term TOK_PLUS term  { $$ = node_build2(AST_ADD, $1, $3); }
-  | term TOK_MINUS term  { $$ = node_build2(AST_SUBTRACT, $1, $3); }
-  | term TOK_TIMES term  { $$ = node_build2(AST_MULTIPLY, $1, $3); }
-  | term TOK_DIV term  { $$ = node_build2(AST_DIVIDE, $1, $3); }
-  | term TOK_MOD term  { $$ = node_build2(AST_MODULUS, $1, $3); }
+  | expression TOK_PLUS term  { $$ = node_build2(AST_ADD, $1, $3); }
+  | expression TOK_MINUS term  { $$ = node_build2(AST_SUBTRACT, $1, $3); }
+  | expression TOK_TIMES term  { $$ = node_build2(AST_MULTIPLY, $1, $3); }
+  | expression TOK_DIV term  { $$ = node_build2(AST_DIVIDE, $1, $3); }
+  | expression TOK_MOD term  { $$ = node_build2(AST_MODULUS, $1, $3); }
   ;
 
 term
