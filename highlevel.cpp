@@ -28,7 +28,8 @@ std::string PrintHighLevelInstructionSequence::get_opcode_name(int opcode) {
   case HINS_JGT:         return "jgt";
   case HINS_JGTE:        return "jgte";
   case HINS_INT_COMPARE: return "cmpi";
-
+  case HINS_CONS_DEF:    return "const";
+  case HINS_EMPTY:       return "";
   default:
     assert(false);
     return "<invalid>";

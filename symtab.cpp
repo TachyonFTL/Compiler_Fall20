@@ -31,7 +31,7 @@ int SymbolTable::insert_symbol(std::string name, Symbol* symbol, struct Node *no
   if(name_to_symbol.find(name) == name_to_symbol.end()){
     this->names.push_back(name);
 
-    if(symbol->get_kind() == KIND_VAR || symbol->get_kind() == KIND_CONST){
+    if(symbol->get_kind() == KIND_VAR){
       symbol->set_offset(this->current_offset);
       this->current_offset += symbol->get_type()->get_size();
     }

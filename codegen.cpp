@@ -1,6 +1,7 @@
 #include "codegen.h"
 #include "ast.h"
 #include "node.h"
+#include "symbol.h"
 #include "symtab.h"
 #include "cfg.h"
 #include "highlevel.h"
@@ -38,6 +39,7 @@ private:
                                         {AST_COMPARE_EQ,  HINS_JE}, {AST_COMPARE_NEQ, HINS_JNE}};
 
   void visit_instructions(struct Node *ast);
+  void visit_constant_def(struct Node *ast);
   void visit_read(struct Node *ast);
   void visit_write(struct Node *ast);
   void visit_var_ref(struct Node *ast);
@@ -81,11 +83,30 @@ CodeGenerator::~CodeGenerator(){
 }
 
 void CodeGenerator::generate_code(){
+  visit(node_get_kid(this->root, 1));
   return visit_instructions(node_get_kid(this->root, 2));
 }
 
 InstructionSequence * CodeGenerator::get_code(){
   return this->code;
+}
+
+void CodeGenerator::visit_constant_def(struct Node *ast){
+  std::string name = node_get_str(node_get_kid(ast, 0));
+  Symbol *constant = this->symtable->get_symbol_in_scope(name);
+  std::string type_name = constant->get_type_name();
+
+  struct Operand* oprand = new Operand(name, true);
+  struct Operand* immval;
+  if (type_name == "INTEGER"){
+    immval = new Operand(OPERAND_INT_LITERAL, constant->get_const_val());
+  }  else {
+    error_at_node(ast, "Unspported constant type");
+  }
+
+  ast->set_oprand(oprand);
+  Instruction *ins = new Instruction(HINS_CONS_DEF, *oprand, *immval);
+  this->code->add_instruction(ins);
 }
 
 void CodeGenerator::visit_instructions(struct Node *ast){
@@ -161,9 +182,16 @@ void CodeGenerator::visit_write(struct Node *ast){
 
 void CodeGenerator::visit_var_ref(struct Node *ast){
   struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+  struct Operand* immval;
   ast->set_oprand(oprand);
-  struct Operand* immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_offset());
-  this->code->add_instruction(new Instruction(HINS_LOCALADDR, *oprand, *immval));
+
+  if (this->symtable->get_symbol(ast->get_str())->get_kind() == KIND_CONST){
+    immval = new Operand(ast->get_str(), true);
+    this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
+  } else {
+    immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_offset());
+    this->code->add_instruction(new Instruction(HINS_LOCALADDR, *oprand, *immval));
+  }
 }
 
 void CodeGenerator::visit_array_element_ref(struct Node *ast){
@@ -197,7 +225,6 @@ void CodeGenerator::visit_array_element_ref(struct Node *ast){
 }
 
 void CodeGenerator::visit_field_ref(struct Node *ast){
-  // TODO
   struct Node *record = node_get_kid(ast, 0);
   struct Node *field = node_get_kid(ast, 1);
 
@@ -266,7 +293,6 @@ void CodeGenerator::visit_designator(struct Node *ast){
   }
 }
 
-// TODO
 void CodeGenerator::visit_expression(struct Node *ast){
   // uniary expression
   switch (node_get_tag(ast)) {
@@ -413,30 +439,31 @@ void CodeGenerator::visit_if_else(struct Node *ast){
   struct Node *iftrue = ast->get_kid(1);
 
   std::string label_0 = alloc_label();
+  std::string label_1 = alloc_label();
   struct Operand *else_label = new Operand(label_0);
+  struct Operand *out_label = new Operand(label_1);
+
   cond->set_oprand(else_label);
 
   visit_expression(cond);
 
   Instruction *ins = new Instruction(get_jmp_ins(cond), *else_label);
   this->code->add_instruction(ins);
-
+  
   visit_instructions(iftrue);
   
-  std::string label_1 = alloc_label();
-  struct Operand *out_label = new Operand(label_1);
   cond->set_oprand(out_label);
 
   Instruction *ins_out = new Instruction(HINS_JUMP, *out_label);
   this->code->add_instruction(ins_out);
-  
   this->code->define_label(label_0);
 
   struct Node *else_exp = ast->get_kid(2);
   visit_instructions(else_exp);
-  std::cout << label_1 << std::endl;
-
+  
+  Instruction *ins_empty = new Instruction(HINS_EMPTY);
   this->code->define_label(label_1);
+  this->code->add_instruction(ins_empty);
 }
 
 void CodeGenerator::visit_repeat(struct Node *ast){

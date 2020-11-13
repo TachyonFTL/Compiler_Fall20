@@ -160,8 +160,10 @@ void SymbolTableBuilder::build_symtab() {
 // evaluate constant def
 void SymbolTableBuilder::visit_constant_def(struct Node *ast) {
   std::string name = node_get_str(node_get_kid(ast, 0));
-  Symbol *constant = new Symbol(name, KIND_CONST, eval_expr_type(node_get_kid(ast, 1)));
+  Type *type = eval_expr_type(node_get_kid(ast, 1));
+  Symbol *constant = new Symbol(name, KIND_CONST, type);
 
+  ast->set_type(type);
   // evaluate constant reference and store in symtable
   constant->set_const_val(eval_const_expr(node_get_kid(ast, 1)));
   this->current_table->insert_symbol(name, constant, node_get_kid(ast, 0));
