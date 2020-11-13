@@ -32,6 +32,11 @@ class InstructionVisitor{
 
 		void translate_jump(Instruction *ins);
 		void translate_jlte(Instruction *ins);
+		void translate_jgte(Instruction *ins);
+		void translate_jlt(Instruction *ins);
+		void translate_jgt(Instruction *ins);
+		void translate_jeq(Instruction *ins);
+		void translate_jne(Instruction *ins);
 
 		void translate_div(Instruction *ins);
 		void translate_add(Instruction *ins);
@@ -57,8 +62,13 @@ class InstructionVisitor{
 																										 {HINS_INT_MOD, &InstructionVisitor::translate_mod},
 																										 {HINS_INT_COMPARE, &InstructionVisitor::translate_cmp},
 																										 {HINS_JLTE, &InstructionVisitor::translate_jlte},
+																										 {HINS_JGTE, &InstructionVisitor::translate_jgte},
+																										 {HINS_JLT, &InstructionVisitor::translate_jlt},
+																										 {HINS_JGT, &InstructionVisitor::translate_jgt},
+																										 {HINS_JE, &InstructionVisitor::translate_jeq},
+																										 {HINS_JNE, &InstructionVisitor::translate_jne},
 																										 {HINS_JUMP, &InstructionVisitor::translate_jump}};
-		struct Operand vreg_ref(Operand vreg);
+		struct Operand vreg_ref(Operand vreg, int bias=0);
 
 		//struct Operand localvar = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, 0);
 		struct Operand rsp = Operand(OPERAND_MREG, MREG_RSP);
@@ -67,6 +77,8 @@ class InstructionVisitor{
 		struct Operand r10 = Operand(OPERAND_MREG, MREG_R10);
 		struct Operand r11 = Operand(OPERAND_MREG, MREG_R11);
 		struct Operand rax = Operand(OPERAND_MREG, MREG_RAX);
+		struct Operand rbx = Operand(OPERAND_MREG, MREG_RBX);
+
 		struct Operand rdx = Operand(OPERAND_MREG, MREG_RDX);
 		struct Operand eax = Operand(OPERAND_MREG, MREG_EAX);
 
@@ -139,7 +151,7 @@ void InstructionVisitor::translate_readint(Instruction *ins){
 	}
 
 	Instruction *move = new Instruction(MINS_MOVQ, inputfmt, rdi);
-	Instruction *load = new Instruction(MINS_LEAQ, vreg_ref(ins->get_operand(0)), rsi);
+	Instruction *load = new Instruction(MINS_LEAQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
 	Instruction *call = new Instruction(MINS_CALL, read);
 	low_level->add_instruction(move);
 	low_level->add_instruction(load);
@@ -162,7 +174,7 @@ void InstructionVisitor::translate_writeint(Instruction *ins){
 	}
 
 	Instruction *move = new Instruction(MINS_MOVQ, outputfmt, rdi);
-	Instruction *load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), rsi);
+	Instruction *load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
 	Instruction *call = new Instruction(MINS_CALL, write);
 	low_level->add_instruction(move);
 	low_level->add_instruction(load);
@@ -243,7 +255,14 @@ void InstructionVisitor::translate_add(Instruction *ins){
 
 void InstructionVisitor::translate_sub(Instruction *ins){
   Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  Instruction *move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+
+	Instruction *move_second;
+	if(ins->get_operand(2).has_base_reg()){
+    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+	} else {
+		move_second = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+	}
+  
   Instruction *add = new Instruction(MINS_SUBQ, r10, r11);
 	//std::cout << _var_offset + 8 * ins->get_operand(0).get_base_reg() << std::endl;
   Instruction *move_result = new Instruction(MINS_MOVQ, r11, vreg_ref(ins->get_operand(0)));
@@ -256,8 +275,23 @@ void InstructionVisitor::translate_sub(Instruction *ins){
 
 void InstructionVisitor::translate_mul(Instruction *ins){
   Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  Instruction *move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  Instruction *add = new Instruction(MINS_IMULQ, r11, r10);
+  Instruction *move_second;
+	if(ins->get_operand(2).has_base_reg()){
+    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+	} else {
+		move_second = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+	}
+
+	Operand reg_0 = r11;
+	Operand reg_1 = r10;
+	if(ins->get_operand(1).is_memref()) {
+		reg_0 = reg_0.to_memref();
+	}
+	if(ins->get_operand(2).is_memref()) {
+		reg_1 = reg_1.to_memref();
+	}
+
+  Instruction *add = new Instruction(MINS_IMULQ, reg_0, reg_1);
 	//std::cout << _var_offset + 8 * ins->get_operand(0).get_base_reg() << std::endl;
   Instruction *move_result = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
   
@@ -287,8 +321,34 @@ void InstructionVisitor::translate_jlte(Instruction *ins){
 	low_level->add_instruction(jmp);
 }
 
-struct Operand InstructionVisitor::vreg_ref(Operand vreg){
-  struct Operand memr_address = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, _var_offset + 8 * vreg.get_base_reg());
+void InstructionVisitor::translate_jgte(Instruction *ins){
+	Instruction *jmp = new Instruction(MINS_JGE, ins->get_operand(0));
+	low_level->add_instruction(jmp);
+}
+
+void InstructionVisitor::translate_jlt(Instruction *ins){
+	Instruction *jmp = new Instruction(MINS_JL, ins->get_operand(0));
+	low_level->add_instruction(jmp);
+}
+
+void InstructionVisitor::translate_jgt(Instruction *ins){
+	Instruction *jmp = new Instruction(MINS_JG, ins->get_operand(0));
+	low_level->add_instruction(jmp);
+}
+
+void InstructionVisitor::translate_jeq(Instruction *ins){
+	Instruction *jmp = new Instruction(MINS_JE, ins->get_operand(0));
+	low_level->add_instruction(jmp);
+}
+
+void InstructionVisitor::translate_jne(Instruction *ins){
+	Instruction *jmp = new Instruction(MINS_JNE, ins->get_operand(0));
+	low_level->add_instruction(jmp);
+}
+
+
+struct Operand InstructionVisitor::vreg_ref(Operand vreg, int bias){
+  struct Operand memr_address = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, _var_offset + 8 * vreg.get_base_reg() + bias);
 	return memr_address;
 }
 

@@ -1,0 +1,52 @@
+	.section .rodata
+s_readint_fmt: .string "%ld"
+s_writeint_fmt: .string "%ld\n"
+	.section .text
+	.globl main
+main:
+	subq $80, %rsp
+	leaq 0(%rsp), %r10
+	movq %r10, 24(%rsp)
+	movq $7, 32(%rsp)
+	movq 32(%rsp), %r11
+	movq 24(%rsp), %r10
+	movq %r11, (%r10)
+	leaq 8(%rsp), %r10
+	movq %r10, 24(%rsp)
+	movq $29, 32(%rsp)
+	movq 32(%rsp), %r11
+	movq 24(%rsp), %r10
+	movq %r11, (%r10)
+	leaq 16(%rsp), %r10
+	movq %r10, 24(%rsp)
+	leaq 8(%rsp), %r10
+	movq %r10, 32(%rsp)
+	movq $5, 40(%rsp)
+	movq 32(%rsp), %r11
+	movq (%r11), %r11
+	movq %r11, 48(%rsp)
+	movq 48(%rsp), %r11
+	movq 40(%rsp), %r10
+	subq %r10, %r11
+	movq %r11, 56(%rsp)
+	movq $3, 64(%rsp)
+	movq 56(%rsp), %r11
+	movq 64(%rsp), %r10
+	subq %r10, %r11
+	movq %r11, 72(%rsp)
+	movq 72(%rsp), %r11
+	movq 24(%rsp), %r10
+	movq %r11, (%r10)
+	leaq 16(%rsp), %r10
+	movq %r10, 24(%rsp)
+	movq 24(%rsp), %r11
+	movq (%r11), %r11
+	movq %r11, 32(%rsp)
+	subq $8, %rsp
+	movq $s_writeint_fmt, %rdi
+	movq 32(%rsp), %rsi
+	call printf
+	addq $8, %rsp
+	addq $80, %rsp
+	movl $0, %eax
+	ret 

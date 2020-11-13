@@ -36,6 +36,7 @@ void yyerror(const char *fmt, ...);
 "THEN"                   { return create_token(TOK_THEN, yytext); }
 "ELSE"                   { return create_token(TOK_ELSE, yytext); }
 "REPEAT"                 { return create_token(TOK_REPEAT, yytext); }
+"UNTIL"                 { return create_token(TOK_UNTIL, yytext); }
 "WHILE"                  { return create_token(TOK_WHILE, yytext); }
 "DO"                     { return create_token(TOK_DO, yytext); }
 "READ"                   { return create_token(TOK_READ, yytext); }

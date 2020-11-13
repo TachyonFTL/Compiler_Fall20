@@ -32,6 +32,7 @@ enum Mode {
   PRINT_AST,
   PRINT_AST_GRAPH,
   PRINT_SYMBOL_TABLE,
+  PRINT_HIGHLEVEL,
   COMPILE,
 };
 
@@ -42,7 +43,7 @@ int main(int argc, char **argv) {
   int mode = COMPILE;
   int opt;
 
-  while ((opt = getopt(argc, argv, "pgs")) != -1) {
+  while ((opt = getopt(argc, argv, "pgsh")) != -1) {
     switch (opt) {
     case 'p':
       mode = PRINT_AST;
@@ -54,6 +55,10 @@ int main(int argc, char **argv) {
 
     case 's':
       mode = PRINT_SYMBOL_TABLE;
+      break;
+
+    case 'h':
+      mode = PRINT_HIGHLEVEL;
       break;
 
     case '?':
@@ -89,16 +94,21 @@ int main(int argc, char **argv) {
     struct CodeGenerator *cgt = highlevel_code_generator_create(g_program, get_sym_tab(ctx));
     generator_generate_highlevel(cgt);
     struct InstructionSequence *code = generator_get_highlevel(cgt);
-
-    //PrintHighLevelInstructionSequence print_ins(code);
-    //print_ins.print();
-    struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, get_var_offset(get_sym_tab(ctx)), get_vreg_offset(cgt));
-
-    generator_generate_lowlevel(lowlevel_generator);
-    struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
     
-    PrintX86_64InstructionSequence print_ins(lowlevel);
-    print_ins.print();
+    if (mode == PRINT_HIGHLEVEL) {
+      PrintHighLevelInstructionSequence print_ins(code);
+      print_ins.print();
+    } else {
+      struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, get_var_offset(get_sym_tab(ctx)), get_vreg_offset(cgt));
+
+      generator_generate_lowlevel(lowlevel_generator);
+      struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
+    
+      PrintX86_64InstructionSequence print_ins(lowlevel);
+      print_ins.print();
+    }
+
+
   }
 
   return 0;
