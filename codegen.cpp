@@ -12,11 +12,15 @@
 #include <map>
 
 ////////////////////////////////////////////////////////////////////////
-// Helper class SymbolTableBuilder to visit the AST
+// Main class CodeGenerator as a ASTvisitor
 class CodeGenerator: public ASTVisitor  {
 private:
+  // ast root
   struct Node *root = nullptr;
+
+  // symbol table from static analysis
   SymbolTable *symtable = nullptr;
+  
   InstructionSequence *code = new InstructionSequence();
   int vreg_count = 0;
   int max_vreg_count = 0;
@@ -30,6 +34,7 @@ public:
   int get_vreg_count();
   
 private:
+  // two maps to store corresponding jump commands for normal and inverted jump
   std::map<int, int> compare_to_jump_inverted = {{AST_COMPARE_LT, HINS_JGTE}, {AST_COMPARE_GT, HINS_JLTE},
                                                  {AST_COMPARE_LTE, HINS_JGT}, {AST_COMPARE_GTE, HINS_JLT},
                                                  {AST_COMPARE_EQ,  HINS_JNE}, {AST_COMPARE_NEQ, HINS_JE}};
@@ -66,13 +71,18 @@ private:
   void visit_while(struct Node *ast);
 
   int get_jmp_ins(struct Node *ast, bool invert = 1);
+
+  // alloc a new vreg
   int alloc_vreg();
+
+  // reset allocated vreg after instructions
   void rest_vreg();
+
+  // alloc a new label for code blocks
   std::string alloc_label();
 
 
 };
-
 
 CodeGenerator::CodeGenerator(struct Node *ast, SymbolTable *symtab){
   this->root = ast;
@@ -91,6 +101,7 @@ InstructionSequence * CodeGenerator::get_code(){
   return this->code;
 }
 
+// visit constant definitions
 void CodeGenerator::visit_constant_def(struct Node *ast){
   std::string name = node_get_str(node_get_kid(ast, 0));
   Symbol *constant = this->symtable->get_symbol_in_scope(name);
@@ -98,6 +109,8 @@ void CodeGenerator::visit_constant_def(struct Node *ast){
 
   struct Operand* oprand = new Operand(name, true);
   struct Operand* immval;
+
+  // store int constant with CONS_DEF operation
   if (type_name == "INTEGER"){
     immval = new Operand(OPERAND_INT_LITERAL, constant->get_const_val());
   }  else {
@@ -109,6 +122,7 @@ void CodeGenerator::visit_constant_def(struct Node *ast){
   this->code->add_instruction(ins);
 }
 
+// visit a given instruction based on its kind
 void CodeGenerator::visit_instructions(struct Node *ast){
   int num_kids = node_get_num_kids(ast);
   struct Node *instruction = node_get_kid(ast, 0);
@@ -143,32 +157,41 @@ void CodeGenerator::visit_instructions(struct Node *ast){
     default:
       error_at_node(instruction, "visit_instructions: Unknown Instruction");
   }
+  
+  // rest allocated vreg
+  this->rest_vreg();
 
-  this->rest_vreg(); // Q!
-
+  // recursively visit subsequent instructions
   if(num_kids == 2){
     return visit_instructions(node_get_kid(ast, 1));
   }
 
 }
 
+// visit readint instruction
 void CodeGenerator::visit_read(struct Node *ast){
   struct Node* designator = node_get_kid(ast, 0);
 
   visit_expression(designator);
-
+  
+  // read int
   struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
   this->code->add_instruction(new Instruction(HINS_READ_INT, *oprand));
+  
+  // assign int to var
   struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
   this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *oprand));
 }
 
+// visit writeint instruction
 void CodeGenerator::visit_write(struct Node *ast){
   struct Node* expression = node_get_kid(ast, 0);
   int tag = node_get_tag(expression);
+  Operand *exp_oprand;
+
   visit_expression(expression);
 
-  Operand *exp_oprand;
+  // check if it is a memory reference
   if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
     Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
     exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
@@ -180,11 +203,13 @@ void CodeGenerator::visit_write(struct Node *ast){
   this->code->add_instruction(new Instruction(HINS_WRITE_INT, *exp_oprand));
 }
 
+// visit var reference 
 void CodeGenerator::visit_var_ref(struct Node *ast){
   struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
   struct Operand* immval;
   ast->set_oprand(oprand);
-
+  
+  // check if the var is a constant or a real variable
   if (this->symtable->get_symbol(ast->get_str())->get_kind() == KIND_CONST){
     immval = new Operand(ast->get_str(), true);
     this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
@@ -194,15 +219,20 @@ void CodeGenerator::visit_var_ref(struct Node *ast){
   }
 }
 
+// visit var reference 
 void CodeGenerator::visit_array_element_ref(struct Node *ast){
+  // left is the array var and right is an expression
   struct Node *left = node_get_kid(ast, 0);
   struct Node *right = node_get_kid(ast, 1);
   visit_expression(left);
   visit_expression_list(right);
-
+  
+  // get the type of the array
   struct Type *current_type = ast->get_type();
 
+  // resolve multidim array reference
   while(right != nullptr){
+    // allocate vreg for expression and get the element data size of current array
     struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
     struct Operand* arr_data_size = new Operand(OPERAND_INT_LITERAL, current_type->get_base_type()->get_size());
 
@@ -213,6 +243,7 @@ void CodeGenerator::visit_array_element_ref(struct Node *ast){
     ast->set_oprand(arr_element_ref);
     this->code->add_instruction(new Instruction(HINS_INT_ADD, *arr_element_ref, *left->get_oprand(), *oprand));
     
+    // continue if there are more dims
     if (node_get_num_kids(right) == 1){
       break;
     }
@@ -224,6 +255,7 @@ void CodeGenerator::visit_array_element_ref(struct Node *ast){
   }
 }
 
+// visit references to a field of a record type
 void CodeGenerator::visit_field_ref(struct Node *ast){
   struct Node *record = node_get_kid(ast, 0);
   struct Node *field = node_get_kid(ast, 1);
@@ -231,9 +263,8 @@ void CodeGenerator::visit_field_ref(struct Node *ast){
   visit_expression(record);
 
   struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-  //std::cout << node_get_str(field) << std::endl;
-  //std::cout << ast->get_type() << std::endl;
-  //std::cout << ast->get_type()->get_field()->get_symbol_in_scope(node_get_str(field))->get_offset();
+  
+  // get field memory offset from symbol table
   struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_type()->get_field()->get_symbol_in_scope(node_get_str(field))->get_offset());
 
   this->code->add_instruction(new Instruction(HINS_INT_ADD, *oprand, *record->get_oprand(), *immval));
@@ -241,24 +272,28 @@ void CodeGenerator::visit_field_ref(struct Node *ast){
   
 }
 
+// visit a list of expressions encountered on multidim array
 void CodeGenerator::visit_expression_list(struct Node *ast){
   struct Node *kid = node_get_kid(ast, 0);
   visit_expression(kid);
 
   int tag = node_get_tag(kid);
-
+  
+  // check if the current expression is a memory reference
   if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
     struct Operand *left_exp_result = new Operand(OPERAND_VREG_MEMREF, kid->get_oprand()->get_base_reg());
     ast->set_oprand(left_exp_result);
   } else {
     ast->set_oprand(node_get_kid(ast, 0)->get_oprand());
   }
-
+  
+  // recursion of remaining expressions
   if(node_get_num_kids(ast) != 1) {
     return visit_expression_list(node_get_kid(ast, 1));
   }
 }
 
+// visit var assignment
 void CodeGenerator::visit_assign(struct Node *ast){
   struct Node* designator = node_get_kid(ast, 0);
   struct Node* expression = node_get_kid(ast, 1);
@@ -270,6 +305,8 @@ void CodeGenerator::visit_assign(struct Node *ast){
   struct Operand *exp_oprand;
 
   int tag = node_get_tag(expression);
+
+  // resolve memory refernce
   if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
     exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
     exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
@@ -279,20 +316,20 @@ void CodeGenerator::visit_assign(struct Node *ast){
   }
   
   struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
-  // struct Operand* exp_result = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
   this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *exp_oprand));
 }
 
+// visit a designator (Deprecated)
 void CodeGenerator::visit_designator(struct Node *ast){
     switch (node_get_tag(ast)) {
     case AST_VAR_REF:
       return visit_var_ref(ast);
-      
     default:
       error_at_node(ast, "visit_designator: Designator Type Not Implemented");
   }
 }
 
+// visit an expression
 void CodeGenerator::visit_expression(struct Node *ast){
   // uniary expression
   switch (node_get_tag(ast)) {
@@ -324,6 +361,7 @@ void CodeGenerator::visit_expression(struct Node *ast){
   int l_tag = node_get_tag(node_get_kid(ast, 0));
   int r_tag = node_get_tag(node_get_kid(ast, 1));
   
+  // resolve memory reference
   if (l_tag == AST_VAR_REF || l_tag == AST_ARRAY_ELEMENT_REF || l_tag == AST_FIELD_REF){
     left_exp_result = new Operand(OPERAND_VREG_MEMREF, left->get_oprand()->get_base_reg());
     left_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
@@ -391,6 +429,7 @@ void CodeGenerator::visit_divide(struct Node *ast, struct Operand *op, struct Op
   this->code->add_instruction(new Instruction(HINS_INT_DIV, *op, *left, *right));
 }
 
+// visit negation of an expression
 void CodeGenerator::visit_negate(struct Node *ast){
   struct Node *expression = node_get_kid(ast, 0);
   visit_expression(expression);
@@ -410,34 +449,41 @@ void CodeGenerator::visit_int_literal(struct Node *ast){
   ast->set_oprand(reg);
   
   Operand immval(OPERAND_INT_LITERAL, ast->get_ival());
-    Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, immval);
-    this->code->add_instruction(ins);
+  Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, immval);
+  this->code->add_instruction(ins);
 }
 
+// visit if statement
 void CodeGenerator::visit_if(struct Node *ast) {
   struct Node *cond = ast->get_kid(0);
   struct Node *iftrue = ast->get_kid(1);
 
-  // cond->set_inverted(true);
+  // allocate a new code block label
   std::string label = alloc_label();
   struct Operand *out_label = new Operand(label);
   cond->set_oprand(out_label);
 
   visit_expression(cond);
-
+  
+  // jump if cond is not true
   Instruction *ins = new Instruction(get_jmp_ins(cond), *out_label);
 
   this->code->add_instruction(ins);
   visit_instructions(iftrue);
   
-  //std::cout << label << std::endl;
   this->code->define_label(label);
+  
+  // output an empty line
+  Instruction *ins_empty = new Instruction(HINS_EMPTY);
+  this->code->add_instruction(ins_empty);
 }
 
+// visit if-else statement
 void CodeGenerator::visit_if_else(struct Node *ast){
   struct Node *cond = ast->get_kid(0);
   struct Node *iftrue = ast->get_kid(1);
-
+  
+  // needs two code block labels for if and else
   std::string label_0 = alloc_label();
   std::string label_1 = alloc_label();
   struct Operand *else_label = new Operand(label_0);
@@ -446,14 +492,16 @@ void CodeGenerator::visit_if_else(struct Node *ast){
   cond->set_oprand(else_label);
 
   visit_expression(cond);
-
+  
+  // if cond is not true
   Instruction *ins = new Instruction(get_jmp_ins(cond), *else_label);
   this->code->add_instruction(ins);
   
   visit_instructions(iftrue);
   
   cond->set_oprand(out_label);
-
+  
+  // jump after excution of current code block
   Instruction *ins_out = new Instruction(HINS_JUMP, *out_label);
   this->code->add_instruction(ins_out);
   this->code->define_label(label_0);
@@ -461,47 +509,52 @@ void CodeGenerator::visit_if_else(struct Node *ast){
   struct Node *else_exp = ast->get_kid(2);
   visit_instructions(else_exp);
   
-  Instruction *ins_empty = new Instruction(HINS_EMPTY);
   this->code->define_label(label_1);
+  
+  // output an empty line
+  Instruction *ins_empty = new Instruction(HINS_EMPTY);
   this->code->add_instruction(ins_empty);
 }
 
+// visit repeat statement
 void CodeGenerator::visit_repeat(struct Node *ast){
   struct Node *cond = ast->get_kid(1);
   struct Node *iftrue = ast->get_kid(0);
 
   std::string label_0 = alloc_label();
   std::string label_1 = alloc_label();
+
   struct Operand *iftrue_label = new Operand(label_0);
   struct Operand *out_label = new Operand(label_1);
   cond->set_oprand(iftrue_label);
-
-  //Instruction *ins = new Instruction(HINS_JUMP, *out_label);
-  //this->code->add_instruction(ins);
-
+  
+  // iteration body
   this->code->define_label(label_0);
-
   visit_instructions(iftrue);
 
   this->code->define_label(label_1);
-
   visit_expression(cond);
-
+  
+  // iterate util cond is false
   Instruction *ins;
   ins = new Instruction(get_jmp_ins(cond, 1), *iftrue_label);
   this->code->add_instruction(ins);
 }
 
+// visit while statement
 void CodeGenerator::visit_while(struct Node *ast){
   struct Node *cond = ast->get_kid(0);
   struct Node *iftrue = ast->get_kid(1);
 
   std::string label_0 = alloc_label();
   std::string label_1 = alloc_label();
+
   struct Operand *iftrue_label = new Operand(label_0);
   struct Operand *out_label = new Operand(label_1);
+  
   cond->set_oprand(iftrue_label);
-
+  
+  // jump to cond
   Instruction *ins = new Instruction(HINS_JUMP, *out_label);
   this->code->add_instruction(ins);
 
@@ -512,12 +565,14 @@ void CodeGenerator::visit_while(struct Node *ast){
   this->code->define_label(label_1);
 
   visit_expression(cond);
+
+  // jump to loop body if cond is true
   ins = new Instruction(get_jmp_ins(cond, 0), *iftrue_label);
   this->code->add_instruction(ins);
 
 }
 
-
+// visit a compare statement
 void CodeGenerator::visit_compare(struct Node *ast, struct Operand *left, struct Operand *right){
   this->code->add_instruction(new Instruction(HINS_INT_COMPARE, *left, *right));
 }
@@ -539,15 +594,20 @@ std::string CodeGenerator::alloc_label(){
   return label + std::to_string(this->label_count++);
 }
 
+// reset vreg allocation and record maximum vreg allocated
 void CodeGenerator::rest_vreg(){
   this->max_vreg_count = (this->vreg_count > this->max_vreg_count) ? this->vreg_count : this->max_vreg_count;
   this->vreg_count = 0;
 }
 
+// get correct jump code
 int CodeGenerator::get_jmp_ins(struct Node *ast, bool invert){
   int tag = node_get_tag(ast);
+  
+  // find correspoding jump command from map
   std::map<int, int>::iterator iter;  
   
+  // return correspoding jump command 
   if(invert){
     iter = compare_to_jump_inverted.find(tag);
     if(iter != compare_to_jump_inverted.end())
