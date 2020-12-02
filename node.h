@@ -5,11 +5,11 @@
 
 #include <string>
 #include <vector>
-
+#include "cfg.h"
 #endif // __cplusplus
 
 #include "util.h"
-#include "cfg.h"
+
 // Node datatype and functions
 
 // Forward declaration for SymbolTable, SymbolTableEntry, Type

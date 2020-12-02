@@ -41,3 +41,27 @@ std::string PrintHighLevelInstructionSequence::get_mreg_name(int regnum) {
   assert(false);
   return "<invalid>";
 }
+
+HighLevelControlFlowGraphBuilder::HighLevelControlFlowGraphBuilder(InstructionSequence *iseq)
+  : ControlFlowGraphBuilder(iseq) {
+}
+
+HighLevelControlFlowGraphBuilder::~HighLevelControlFlowGraphBuilder() {
+}
+
+bool HighLevelControlFlowGraphBuilder::falls_through(Instruction *ins) {
+  // only unconditional jump instructions don't fall through
+  return ins->get_opcode() != HINS_JUMP;
+}
+
+HighLevelControlFlowGraphPrinter::HighLevelControlFlowGraphPrinter(ControlFlowGraph *cfg)
+  : ControlFlowGraphPrinter(cfg) {
+}
+
+HighLevelControlFlowGraphPrinter::~HighLevelControlFlowGraphPrinter() {
+}
+
+void HighLevelControlFlowGraphPrinter::print_basic_block(BasicBlock *bb) {
+  PrintHighLevelInstructionSequence print_hliseq(bb);
+  print_hliseq.print();
+}

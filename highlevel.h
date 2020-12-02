@@ -38,4 +38,19 @@ public:
   virtual std::string get_mreg_name(int regnum);
 };
 
+class HighLevelControlFlowGraphBuilder : public ControlFlowGraphBuilder {
+public:
+  HighLevelControlFlowGraphBuilder(InstructionSequence *iseq);
+  virtual ~HighLevelControlFlowGraphBuilder();
+
+  virtual bool falls_through(Instruction *ins);
+};
+
+class HighLevelControlFlowGraphPrinter : public ControlFlowGraphPrinter {
+public:
+  HighLevelControlFlowGraphPrinter(ControlFlowGraph *cfg);
+  ~HighLevelControlFlowGraphPrinter();
+
+  virtual void print_basic_block(BasicBlock *bb);
+};
 #endif // HIGHLEVEL_H

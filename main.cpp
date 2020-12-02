@@ -33,6 +33,7 @@ enum Mode {
   PRINT_AST_GRAPH,
   PRINT_SYMBOL_TABLE,
   PRINT_HIGHLEVEL,
+  OPTIMIZATION,
   COMPILE,
 };
 
@@ -43,7 +44,7 @@ int main(int argc, char **argv) {
   int mode = COMPILE;
   int opt;
 
-  while ((opt = getopt(argc, argv, "pgsh")) != -1) {
+  while ((opt = getopt(argc, argv, "pgsho")) != -1) {
     switch (opt) {
     case 'p':
       mode = PRINT_AST;
@@ -59,6 +60,10 @@ int main(int argc, char **argv) {
 
     case 'h':
       mode = PRINT_HIGHLEVEL;
+      break;
+
+    case 'o':
+      mode = OPTIMIZATION;
       break;
 
     case '?':
@@ -104,6 +109,10 @@ int main(int argc, char **argv) {
       generator_generate_lowlevel(lowlevel_generator);
       struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
     
+      if (mode == OPTIMIZATION){
+        
+      }
+
       PrintX86_64InstructionSequence print_ins(lowlevel);
       print_ins.print();
     }
