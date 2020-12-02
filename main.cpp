@@ -42,9 +42,10 @@ int main(int argc, char **argv) {
   extern struct Node *g_program;
 
   int mode = COMPILE;
+  int optim = 0;
   int opt;
 
-  while ((opt = getopt(argc, argv, "pgsho")) != -1) {
+  while ((opt = getopt(argc, argv, "pgsh:o")) != -1) {
     switch (opt) {
     case 'p':
       mode = PRINT_AST;
@@ -63,14 +64,14 @@ int main(int argc, char **argv) {
       break;
 
     case 'o':
-      mode = OPTIMIZATION;
+      optim = 1;
       break;
 
     case '?':
       print_usage();
     }
   }
-
+ 
   if (optind >= argc) {
     print_usage();
   }
@@ -93,10 +94,15 @@ int main(int argc, char **argv) {
     struct Context *ctx = context_create(g_program);
     if (mode == PRINT_SYMBOL_TABLE) {
       context_set_flag(ctx, 's'); // tell Context to print symbol table info
+    } else if (optim){
+      context_set_flag(ctx, 'o'); // tell Context to set OPTIM 
     }
     context_build_symtab(ctx);
 
     struct CodeGenerator *cgt = highlevel_code_generator_create(g_program, get_sym_tab(ctx));
+    if (optim){
+      generator_set_flag(cgt, 'o');
+    }
     generator_generate_highlevel(cgt);
     struct InstructionSequence *code = generator_get_highlevel(cgt);
     
@@ -109,9 +115,7 @@ int main(int argc, char **argv) {
       generator_generate_lowlevel(lowlevel_generator);
       struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
     
-      if (mode == OPTIMIZATION){
-        
-      }
+
 
       PrintX86_64InstructionSequence print_ins(lowlevel);
       print_ins.print();

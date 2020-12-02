@@ -40,6 +40,7 @@ private:
 
   struct Operand *op;
   struct Type *m_type;
+  bool constant = 0;
 /*
   SymbolTable *m_symtab;
   unsigned m_index; // index of symbol table entry
@@ -76,6 +77,9 @@ public:
 
   void set_type(struct Type *oprd);
   struct Type* get_type();
+
+  bool is_const();
+  void set_const();
 
 /*
   void set_symtab(SymbolTable *symtab);

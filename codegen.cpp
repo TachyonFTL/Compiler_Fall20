@@ -18,6 +18,8 @@ private:
   // ast root
   struct Node *root = nullptr;
 
+  char flag = 'n';
+
   // symbol table from static analysis
   SymbolTable *symtable = nullptr;
   
@@ -32,6 +34,7 @@ public:
   void generate_code();
   InstructionSequence *get_code();
   int get_vreg_count();
+  void set_flag(char flg);
   
 private:
   // two maps to store corresponding jump commands for normal and inverted jump
@@ -90,6 +93,10 @@ CodeGenerator::CodeGenerator(struct Node *ast, SymbolTable *symtab){
 }
 
 CodeGenerator::~CodeGenerator(){
+}
+
+void CodeGenerator::set_flag(char flg){
+  this->flag = flg;
 }
 
 void CodeGenerator::generate_code(){
@@ -186,36 +193,52 @@ void CodeGenerator::visit_read(struct Node *ast){
 // visit writeint instruction
 void CodeGenerator::visit_write(struct Node *ast){
   struct Node* expression = node_get_kid(ast, 0);
-  int tag = node_get_tag(expression);
+  
   Operand *exp_oprand;
 
   visit_expression(expression);
-
-  // check if it is a memory reference
-  if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
-    Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
-    exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-    this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
-  } else {
-    exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
-  }
   
+  if (expression->is_const() == 1){
+    exp_oprand = expression->get_oprand();
+  } else {
+    int tag = node_get_tag(expression);
+    // check if it is a memory reference
+    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+      Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
+      exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
+    } else {
+      exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
+    }
+  }
+
   this->code->add_instruction(new Instruction(HINS_WRITE_INT, *exp_oprand));
 }
 
 // visit var reference 
 void CodeGenerator::visit_var_ref(struct Node *ast){
-  struct Operand* oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+  struct Operand* oprand;
   struct Operand* immval;
-  ast->set_oprand(oprand);
   
   // check if the var is a constant or a real variable
   if (this->symtable->get_symbol(ast->get_str())->get_kind() == KIND_CONST){
-    immval = new Operand(ast->get_str(), true);
-    this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
+    if (this->flag == 'o'){
+      immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_const_val());
+      ast->set_oprand(immval);
+      ast->set_const();
+    } else {
+      immval = new Operand(ast->get_str(), true);
+      oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
+      ast->set_oprand(oprand);
+    }
+    
+    // this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
   } else {
+    oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
     immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_offset());
     this->code->add_instruction(new Instruction(HINS_LOCALADDR, *oprand, *immval));
+    ast->set_oprand(oprand);
   }
 }
 
@@ -277,20 +300,26 @@ void CodeGenerator::visit_expression_list(struct Node *ast){
   struct Node *kid = node_get_kid(ast, 0);
   visit_expression(kid);
 
-  int tag = node_get_tag(kid);
-  
-  // check if the current expression is a memory reference
-  if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
-    struct Operand *left_exp_result = new Operand(OPERAND_VREG_MEMREF, kid->get_oprand()->get_base_reg());
+  if (kid->is_const() == 1){
+    struct Operand *left_exp_result = kid->get_oprand();
     ast->set_oprand(left_exp_result);
   } else {
-    ast->set_oprand(node_get_kid(ast, 0)->get_oprand());
-  }
-  
+    int tag = node_get_tag(kid);
+    
+    // check if the current expression is a memory reference
+    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+      struct Operand *left_exp_result = new Operand(OPERAND_VREG_MEMREF, kid->get_oprand()->get_base_reg());
+      ast->set_oprand(left_exp_result);
+    } else {
+      ast->set_oprand(node_get_kid(ast, 0)->get_oprand());
+    }
+  }  
+
   // recursion of remaining expressions
   if(node_get_num_kids(ast) != 1) {
     return visit_expression_list(node_get_kid(ast, 1));
   }
+  
 }
 
 // visit var assignment
@@ -301,20 +330,23 @@ void CodeGenerator::visit_assign(struct Node *ast){
   visit_expression(designator);
   visit_expression(expression);
   
-  struct Operand *exp_result;
   struct Operand *exp_oprand;
 
-  int tag = node_get_tag(expression);
-
   // resolve memory refernce
-  if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
-    exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
-    exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-    this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
+  if (expression->is_const() == 1){
+    exp_oprand = expression->get_oprand();
   } else {
-    exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
+    int tag = node_get_tag(expression);
+    struct Operand *exp_result;
+    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+      exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
+      exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
+    } else {
+      exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
+    }
   }
-  
+
   struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
   this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *exp_oprand));
 }
@@ -348,34 +380,39 @@ void CodeGenerator::visit_expression(struct Node *ast){
   // biary expression
   struct Node *left = node_get_kid(ast, 0);
   struct Node *right = node_get_kid(ast, 1);
+  struct Operand* left_oprand;
+  struct Operand* right_oprand;
 
   visit_expression(left);
   visit_expression(right);
 
-  struct Operand *left_exp_result; 
-  struct Operand *right_exp_result;
-  
-  struct Operand* left_oprand;
-  struct Operand* right_oprand;
-
-  int l_tag = node_get_tag(node_get_kid(ast, 0));
-  int r_tag = node_get_tag(node_get_kid(ast, 1));
-  
-  // resolve memory reference
-  if (l_tag == AST_VAR_REF || l_tag == AST_ARRAY_ELEMENT_REF || l_tag == AST_FIELD_REF){
-    left_exp_result = new Operand(OPERAND_VREG_MEMREF, left->get_oprand()->get_base_reg());
-    left_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-    this->code->add_instruction(new Instruction(HINS_LOAD_INT, *left_oprand, *left_exp_result));
+ // resolve memory reference
+  if (left->is_const() == 1){
+    left_oprand = left->get_oprand();
   } else {
-    left_oprand = new Operand(OPERAND_VREG, left->get_oprand()->get_base_reg());
+    int l_tag = node_get_tag(node_get_kid(ast, 0));
+    if (l_tag == AST_VAR_REF || l_tag == AST_ARRAY_ELEMENT_REF || l_tag == AST_FIELD_REF){
+      struct Operand *left_exp_result; 
+      left_exp_result = new Operand(OPERAND_VREG_MEMREF, left->get_oprand()->get_base_reg());
+      left_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_INT, *left_oprand, *left_exp_result));
+    } else {
+      left_oprand = new Operand(OPERAND_VREG, left->get_oprand()->get_base_reg());
+    }
   }
-
-  if (r_tag == AST_VAR_REF || r_tag == AST_ARRAY_ELEMENT_REF || r_tag == AST_FIELD_REF){
-    right_exp_result = new Operand(OPERAND_VREG_MEMREF, right->get_oprand()->get_base_reg());
-    right_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-    this->code->add_instruction(new Instruction(HINS_LOAD_INT, *right_oprand, *right_exp_result));
+  // std::cout << right->get_str() << right->is_const() << std::endl;
+  if (right->is_const() == 1){
+    right_oprand = right->get_oprand();
   } else {
-    right_oprand = new Operand(OPERAND_VREG, right->get_oprand()->get_base_reg());
+    int r_tag = node_get_tag(node_get_kid(ast, 1));
+    if (r_tag == AST_VAR_REF || r_tag == AST_ARRAY_ELEMENT_REF || r_tag == AST_FIELD_REF){
+      struct Operand *right_exp_result;
+      right_exp_result = new Operand(OPERAND_VREG_MEMREF, right->get_oprand()->get_base_reg());
+      right_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_INT, *right_oprand, *right_exp_result));
+    } else {
+      right_oprand = new Operand(OPERAND_VREG, right->get_oprand()->get_base_reg());
+    }
   }
 
   // relational expression
@@ -445,12 +482,22 @@ void CodeGenerator::visit_negate(struct Node *ast){
 }
 
 void CodeGenerator::visit_int_literal(struct Node *ast){
-  struct Operand* reg = new Operand(OPERAND_VREG, this->alloc_vreg());
-  ast->set_oprand(reg);
+  if (this->flag == 'o'){
+    struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_ival());
+    ast->set_oprand(immval);
+    ast->set_const();
+  } else {
+    struct Operand* reg = new Operand(OPERAND_VREG, this->alloc_vreg());
+    struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_ival());
+    ast->set_oprand(reg);
+    Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, *immval);
+    this->code->add_instruction(ins);
+  }
+  // struct Operand* reg = new Operand(OPERAND_VREG, this->alloc_vreg());
+ 
   
-  Operand immval(OPERAND_INT_LITERAL, ast->get_ival());
-  Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, immval);
-  this->code->add_instruction(ins);
+  //Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, immval);
+  //this->code->add_instruction(ins);
 }
 
 // visit if statement
@@ -634,6 +681,10 @@ struct CodeGenerator *highlevel_code_generator_create(struct Node *ast, SymbolTa
 
 void generator_generate_highlevel(struct CodeGenerator *cgt){
   cgt->generate_code();
+}
+
+void generator_set_flag(struct CodeGenerator *cgt, char flag){
+  cgt->set_flag(flag);
 }
 
 struct InstructionSequence *generator_get_highlevel(struct CodeGenerator *cgt){

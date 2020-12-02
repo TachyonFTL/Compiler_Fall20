@@ -27,6 +27,7 @@ struct InstructionSequence *generator_get_highlevel(struct CodeGenerator *cgt);
 // get number of vreg allcated (for low-level code generator)
 int get_vreg_offset(struct CodeGenerator *cgt);
 
+void generator_set_flag(struct CodeGenerator *cgt, char flag);
 #ifdef __cplusplus
 }
 #endif

@@ -105,6 +105,14 @@ struct Type *Node::get_type() {
   // no type is associated with this node
   return nullptr;
 }
+
+bool Node::is_const(){
+  return constant;
+}
+
+void Node::set_const(){
+  constant = 1;
+}
 /*
 void Node::set_symtab(SymbolTable *symtab) {
   m_symtab = symtab;

@@ -345,6 +345,9 @@ Type *SymbolTableBuilder::eval_expr_type(struct Node *ast) {
   switch (node_get_tag(ast)) {
     case AST_INT_LITERAL:
       sym = this->current_table->get_symbol("INTEGER");
+      if (this->flag == 'o') {
+        ast->set_const();
+      }
       return sym->get_type();
 
     case AST_NEGATE:
@@ -427,6 +430,13 @@ Type *SymbolTableBuilder::eval_var_ref_type(struct Node *ast) {
   } else if (sym->get_kind() == KIND_TYPE) {
     error_at_node(ast, "Cannot reference a type");
     return nullptr;
+  }
+
+  if (this->flag == 'o') {
+    if (sym->get_kind() == KIND_CONST){
+      // std::cout << name << std::endl;
+      ast->set_const();
+    }
   }
 
   return sym->get_type();

@@ -135,7 +135,10 @@ void InstructionVisitor::translate(){
     if (op_code != HINS_CONS_DEF) {
       break;
     }
-    label += translate_const_def(*it);
+    if (1){
+      label += translate_const_def(*it);
+    }
+    
   }
   // write headers
   label += "\t.section .text\n\t.globl main\nmain";
@@ -229,7 +232,12 @@ void InstructionVisitor::translate_writeint(Instruction *ins){
   }
 
   Instruction *move = new Instruction(MINS_MOVQ, outputfmt, rdi);
-  Instruction *load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
+  Instruction *load;
+  if(ins->get_operand(0).has_base_reg()){
+    load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
+  } else {
+    load = new Instruction(MINS_MOVQ, ins->get_operand(0), rsi);
+  }
   Instruction *call = new Instruction(MINS_CALL, write);
   low_level->add_instruction(move);
   low_level->add_instruction(load);
@@ -245,7 +253,14 @@ void InstructionVisitor::translate_writeint(Instruction *ins){
 
 // translate the storeint instruction
 void InstructionVisitor::translate_storeint(Instruction *ins){
-  Instruction *move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_int;
+
+  if(ins->get_operand(1).has_base_reg()){
+    move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
+
   Instruction *move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
 
   Operand dest = Operand(OPERAND_MREG_MEMREF, r10.get_base_reg());
@@ -259,7 +274,13 @@ void InstructionVisitor::translate_storeint(Instruction *ins){
 
 // translate the loadint instruction
 void InstructionVisitor::translate_loadint(Instruction *ins){
-  Instruction *move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_var;
+
+  if(ins->get_operand(1).has_base_reg()){
+    move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_var = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
 
   Operand memr_ref = Operand(OPERAND_MREG_MEMREF, r11.get_base_reg());
   
@@ -279,8 +300,22 @@ void InstructionVisitor::translate_loadcosntint(Instruction *ins){
 
 // translate the divide instruction
 void InstructionVisitor::translate_div(Instruction *ins){
-  Instruction *move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
-  Instruction *move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+  Instruction *move_dividend;
+  Instruction *move_divisor;
+
+  // resolve memory reference
+  if(ins->get_operand(1).has_base_reg()){
+    move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
+  } else {
+    move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
+  }
+
+  if(ins->get_operand(2).has_base_reg()){
+    move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+  } else {
+    move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+  }
+
   Instruction *div = new Instruction(MINS_IDIVQ, r10);
   Instruction *move_result = new Instruction(MINS_MOVQ, rax, vreg_ref(ins->get_operand(0)));
   
@@ -293,8 +328,22 @@ void InstructionVisitor::translate_div(Instruction *ins){
 
 // translate the mod instruction
 void InstructionVisitor::translate_mod(Instruction *ins){
-  Instruction *move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
-  Instruction *move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+  Instruction *move_dividend;
+  Instruction *move_divisor;
+
+  // resolve memory reference
+  if(ins->get_operand(1).has_base_reg()){
+    move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
+  } else {
+    move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
+  }
+
+  if(ins->get_operand(2).has_base_reg()){
+    move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+  } else {
+    move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+  }
+
   Instruction *div = new Instruction(MINS_IDIVQ, r10);
   Instruction *move_result = new Instruction(MINS_MOVQ, rdx, vreg_ref(ins->get_operand(0)));
   
@@ -307,10 +356,16 @@ void InstructionVisitor::translate_mod(Instruction *ins){
 
 // translate the add instruction
 void InstructionVisitor::translate_add(Instruction *ins){
-  Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_first;
   Instruction *move_second;
 
   // resolve memory reference
+  if(ins->get_operand(1).has_base_reg()){
+    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
+
   if(ins->get_operand(2).has_base_reg()){
     move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
   } else {
@@ -329,10 +384,16 @@ void InstructionVisitor::translate_add(Instruction *ins){
 
 // translate the sub instruction
 void InstructionVisitor::translate_sub(Instruction *ins){
-  Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_first;
   Instruction *move_second;
 
   // resolve memory reference
+  if(ins->get_operand(1).has_base_reg()){
+    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
+
   if(ins->get_operand(2).has_base_reg()){
     move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
   } else {
@@ -350,10 +411,16 @@ void InstructionVisitor::translate_sub(Instruction *ins){
 
 // translate the mul instruction
 void InstructionVisitor::translate_mul(Instruction *ins){
-  Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_first;
   Instruction *move_second;
 
   // resolve memory reference
+  if(ins->get_operand(1).has_base_reg()){
+    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
+
   if(ins->get_operand(2).has_base_reg()){
     move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
   } else {
@@ -382,8 +449,22 @@ void InstructionVisitor::translate_mul(Instruction *ins){
 
 // translate the cmp instruction
 void InstructionVisitor::translate_cmp(Instruction *ins){
-  Instruction *move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
-  Instruction *move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  Instruction *move_first;
+  Instruction *move_second;
+
+  // resolve memory reference
+  if(ins->get_operand(0).has_base_reg()){
+    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
+  } else {
+    move_first = new Instruction(MINS_MOVQ, ins->get_operand(0), r10);
+  }
+
+  if(ins->get_operand(1).has_base_reg()){
+    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  } else {
+    move_second = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  }
+
   Instruction *cmp = new Instruction(MINS_CMPQ, r11, r10);
   low_level->add_instruction(move_first);
   low_level->add_instruction(move_second);
