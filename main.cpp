@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
   extern struct Node *g_program;
 
   int mode = COMPILE;
-  int optim = 0;
+  int optim = 1;
   int opt;
 
   while ((opt = getopt(argc, argv, "pgsh:o")) != -1) {
@@ -100,11 +100,21 @@ int main(int argc, char **argv) {
     context_build_symtab(ctx);
 
     struct CodeGenerator *cgt = highlevel_code_generator_create(g_program, get_sym_tab(ctx));
+
     if (optim){
       generator_set_flag(cgt, 'o');
     }
     generator_generate_highlevel(cgt);
+
     struct InstructionSequence *code = generator_get_highlevel(cgt);
+
+    if (optim){
+      HighLevelControlFlowGraphBuilder cfg_builder(code);
+      ControlFlowGraph *cfg = cfg_builder.build();
+      HighLevelControlFlowGraphPrinter print_cfg(cfg);
+      // print_cfg.print();
+      // return 0;
+    }
     
     if (mode == PRINT_HIGHLEVEL) {
       PrintHighLevelInstructionSequence print_ins(code);

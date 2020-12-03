@@ -28,6 +28,7 @@ enum HighLevelOpcode {
   HINS_INT_COMPARE,
   HINS_CONS_DEF,
   HINS_EMPTY,
+  HINS_MOV,
 };
 
 class PrintHighLevelInstructionSequence : public PrintInstructionSequence {

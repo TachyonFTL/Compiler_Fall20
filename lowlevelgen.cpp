@@ -50,6 +50,7 @@ class InstructionVisitor{
     void translate_sub(Instruction *ins);
     void translate_mul(Instruction *ins);
     void translate_mod(Instruction *ins);
+    void translate_mov(Instruction *ins);
 
 
     struct InstructionSequence *get_lowlevel();
@@ -77,6 +78,7 @@ class InstructionVisitor{
                                                      {HINS_JE, &InstructionVisitor::translate_jeq},
                                                      {HINS_JNE, &InstructionVisitor::translate_jne},
                                                      {HINS_JUMP, &InstructionVisitor::translate_jump},
+                                                     {HINS_MOV, &InstructionVisitor::translate_mov},
                                                      };
     
     // get the real memory reference of a vreg
@@ -269,6 +271,22 @@ void InstructionVisitor::translate_storeint(Instruction *ins){
   
   low_level->add_instruction(move_int);
   low_level->add_instruction(move_var);
+  low_level->add_instruction(move_finl);
+}
+
+// translate the mov instruction
+void InstructionVisitor::translate_mov(Instruction *ins){
+  Instruction *move_int;
+
+  if(ins->get_operand(1).has_base_reg()){
+    move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r10);
+  } else {
+    move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r10);
+  }
+  
+  Instruction *move_finl = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
+  
+  low_level->add_instruction(move_int);
   low_level->add_instruction(move_finl);
 }
 

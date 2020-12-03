@@ -6,6 +6,7 @@
 #include "cfg.h"
 #include "highlevel.h"
 #include "stdio.h"
+#include "type.h"
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -166,7 +167,7 @@ void CodeGenerator::visit_instructions(struct Node *ast){
   }
   
   // rest allocated vreg
-  this->rest_vreg();
+  // this->rest_vreg();
 
   // recursively visit subsequent instructions
   if(num_kids == 2){
@@ -186,8 +187,17 @@ void CodeGenerator::visit_read(struct Node *ast){
   this->code->add_instruction(new Instruction(HINS_READ_INT, *oprand));
   
   // assign int to var
-  struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
-  this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *oprand));
+  struct Operand* vreg_ref;
+
+  int tag = node_get_tag(designator);
+  if (tag == AST_VAR_REF) {
+    vreg_ref = designator->get_oprand();
+    this->code->add_instruction(new Instruction(HINS_MOV, *vreg_ref, *oprand));
+  } else {
+    vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
+    this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *oprand));
+  }
+  
 }
 
 // visit writeint instruction
@@ -203,7 +213,9 @@ void CodeGenerator::visit_write(struct Node *ast){
   } else {
     int tag = node_get_tag(expression);
     // check if it is a memory reference
-    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+    if (tag == AST_VAR_REF) {
+      exp_oprand = expression->get_oprand();
+    } else if (tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
       Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
       exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
       this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
@@ -235,9 +247,21 @@ void CodeGenerator::visit_var_ref(struct Node *ast){
     
     // this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
   } else {
-    oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-    immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_offset());
-    this->code->add_instruction(new Instruction(HINS_LOCALADDR, *oprand, *immval));
+    if (this->symtable->get_symbol(ast->get_str())->get_type()->get_kind() == BASE_TYPE){
+      struct Operand* op = this->symtable->get_symbol(ast->get_str())->get_operand();
+      if (op == nullptr){
+        oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+        this->symtable->get_symbol(ast->get_str())->set_operand(oprand);
+      } else {
+        oprand = op;
+      }
+    } else {
+      oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_offset());
+      this->code->add_instruction(new Instruction(HINS_LOCALADDR, *oprand, *immval));
+    }
+    
+
     ast->set_oprand(oprand);
   }
 }
@@ -247,6 +271,7 @@ void CodeGenerator::visit_array_element_ref(struct Node *ast){
   // left is the array var and right is an expression
   struct Node *left = node_get_kid(ast, 0);
   struct Node *right = node_get_kid(ast, 1);
+
   visit_expression(left);
   visit_expression_list(right);
   
@@ -307,7 +332,10 @@ void CodeGenerator::visit_expression_list(struct Node *ast){
     int tag = node_get_tag(kid);
     
     // check if the current expression is a memory reference
-    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+    if (tag == AST_VAR_REF) {
+      struct Operand *left_exp_result = kid->get_oprand();
+      ast->set_oprand(left_exp_result);
+    } else if (tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
       struct Operand *left_exp_result = new Operand(OPERAND_VREG_MEMREF, kid->get_oprand()->get_base_reg());
       ast->set_oprand(left_exp_result);
     } else {
@@ -333,12 +361,17 @@ void CodeGenerator::visit_assign(struct Node *ast){
   struct Operand *exp_oprand;
 
   // resolve memory refernce
+  struct Operand* vreg_ref;
+
   if (expression->is_const() == 1){
     exp_oprand = expression->get_oprand();
   } else {
     int tag = node_get_tag(expression);
     struct Operand *exp_result;
-    if (tag == AST_VAR_REF || tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+    if (tag == AST_VAR_REF) {
+      exp_oprand = expression->get_oprand();
+
+    } else if (tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
       exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
       exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
       this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
@@ -347,8 +380,16 @@ void CodeGenerator::visit_assign(struct Node *ast){
     }
   }
 
-  struct Operand* vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
-  this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *exp_oprand));
+  int designator_tag = node_get_tag(designator);
+  if (designator_tag == AST_VAR_REF) {
+      vreg_ref = designator->get_oprand();
+      this->code->add_instruction(new Instruction(HINS_MOV, *vreg_ref, *exp_oprand));
+    } else {
+      vreg_ref = new Operand(OPERAND_VREG_MEMREF, designator->get_oprand()->get_base_reg());
+      this->code->add_instruction(new Instruction(HINS_STORE_INT, *vreg_ref, *exp_oprand));
+    }
+  
+  
 }
 
 // visit a designator (Deprecated)
@@ -391,7 +432,9 @@ void CodeGenerator::visit_expression(struct Node *ast){
     left_oprand = left->get_oprand();
   } else {
     int l_tag = node_get_tag(node_get_kid(ast, 0));
-    if (l_tag == AST_VAR_REF || l_tag == AST_ARRAY_ELEMENT_REF || l_tag == AST_FIELD_REF){
+    if (l_tag == AST_VAR_REF) {
+      left_oprand = left->get_oprand();
+    } else if (l_tag == AST_ARRAY_ELEMENT_REF || l_tag == AST_FIELD_REF){
       struct Operand *left_exp_result; 
       left_exp_result = new Operand(OPERAND_VREG_MEMREF, left->get_oprand()->get_base_reg());
       left_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
@@ -405,7 +448,9 @@ void CodeGenerator::visit_expression(struct Node *ast){
     right_oprand = right->get_oprand();
   } else {
     int r_tag = node_get_tag(node_get_kid(ast, 1));
-    if (r_tag == AST_VAR_REF || r_tag == AST_ARRAY_ELEMENT_REF || r_tag == AST_FIELD_REF){
+    if (r_tag == AST_VAR_REF) {
+      right_oprand = right->get_oprand();
+    } else if (r_tag == AST_ARRAY_ELEMENT_REF || r_tag == AST_FIELD_REF){
       struct Operand *right_exp_result;
       right_exp_result = new Operand(OPERAND_VREG_MEMREF, right->get_oprand()->get_base_reg());
       right_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
@@ -633,7 +678,7 @@ int CodeGenerator::alloc_vreg(){
 }
 
 int CodeGenerator::get_vreg_count(){
-  return this->max_vreg_count;
+  return this->vreg_count;
 }
 
 std::string CodeGenerator::alloc_label(){

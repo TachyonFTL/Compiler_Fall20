@@ -46,3 +46,11 @@ void Symbol::set_const_val(int val){
 int Symbol::get_const_val(){
   return this->const_val;
 }
+
+void Symbol::set_operand(struct Operand* oprd){
+  this->operand = oprd;
+}
+
+struct Operand* Symbol::get_operand(){
+  return this->operand;
+}

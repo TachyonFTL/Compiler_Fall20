@@ -1,6 +1,7 @@
 #ifndef SYMBOL_H
 #define SYMBOL_H
 
+#include "cfg.h"
 #include "node.h"
 #include "type.h"
 
@@ -20,6 +21,7 @@ private:
   Type *sym_type;
   int const_val; // for constant type only
   int offset = -1;
+  struct Operand* operand = nullptr;
 
 public:
   Symbol(std::string name, int kind, Type *type);
@@ -38,6 +40,10 @@ public:
 
   void set_offset(int offset);
   int get_offset();
+
+  void set_operand(struct Operand* oprd);
+  struct Operand* get_operand();
+
 };
 
 #endif
