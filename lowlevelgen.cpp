@@ -3,9 +3,11 @@
 #include "highlevel.h"
 #include "x86_64.h"
 #include "codegen.h"
+#include <cassert>
 #include <iostream>
 #include <iterator>
 #include <map>
+#include <ostream>
 #include <string>
 
 
@@ -18,13 +20,14 @@ class InstructionVisitor{
     // record num of var and vreg used
     int _var_offset;
     int _vreg_count;
+    int _mreg_count;
 
     // store stack pointer
     int rsp_offset;
     char flag = 'n';
 
   public:
-    InstructionVisitor(InstructionSequence *iseq, int var_offset, int vreg_count);
+    InstructionVisitor(InstructionSequence *iseq, int var_offset, int vreg_count, int mreg_count);
     ~InstructionVisitor() = default;
     
     void translate();
@@ -87,7 +90,7 @@ class InstructionVisitor{
                                                      };
     
     // get the real memory reference of a vreg
-    struct Operand vreg_ref(Operand vreg, int bias=0);
+    struct Operand vreg_ref(Operand vreg, int bias=0, int *flg=nullptr);
 
     struct Operand rsp = Operand(OPERAND_MREG, MREG_RSP);
     struct Operand rdi = Operand(OPERAND_MREG, MREG_RDI);
@@ -95,10 +98,22 @@ class InstructionVisitor{
     struct Operand r10 = Operand(OPERAND_MREG, MREG_R10);
     struct Operand r11 = Operand(OPERAND_MREG, MREG_R11);
     struct Operand rax = Operand(OPERAND_MREG, MREG_RAX);
-    struct Operand rbx = Operand(OPERAND_MREG, MREG_RBX);
+    
 
     struct Operand rdx = Operand(OPERAND_MREG, MREG_RDX);
     struct Operand eax = Operand(OPERAND_MREG, MREG_EAX);
+
+    struct Operand r12 = Operand(OPERAND_MREG, MREG_R12);
+    struct Operand r13 = Operand(OPERAND_MREG, MREG_R13);
+    struct Operand r14 = Operand(OPERAND_MREG, MREG_R14);
+    struct Operand r15 = Operand(OPERAND_MREG, MREG_R15);
+    struct Operand rbx = Operand(OPERAND_MREG, MREG_RBX);
+
+    struct Operand r8 = Operand(OPERAND_MREG, MREG_R8);
+    struct Operand r9 = Operand(OPERAND_MREG, MREG_R9);
+    struct Operand rcx = Operand(OPERAND_MREG, MREG_RCX);
+
+    std::map<int, Operand> idx_to_register= {{7, r15}, {6, r14}, {5, r13}, {4, r12}, {3, rbx}, {2, r9}, {1, r8}, {0, rcx}};
 
     struct Operand inputfmt = Operand("s_readint_fmt", true);
     struct Operand outputfmt = Operand("s_writeint_fmt", true);
@@ -116,10 +131,11 @@ class InstructionVisitor{
 };
 
 
-InstructionVisitor::InstructionVisitor(InstructionSequence *iseq, int var_offset, int vreg_count){
+InstructionVisitor::InstructionVisitor(InstructionSequence *iseq, int var_offset, int vreg_count, int mreg_count){
   high_level = iseq;
   _var_offset = var_offset;
   _vreg_count = vreg_count;
+  _mreg_count = mreg_count;
   rsp_offset =  _var_offset + 8 * vreg_count;
   stack_size = Operand(OPERAND_INT_LITERAL, rsp_offset);
 }
@@ -156,6 +172,14 @@ void InstructionVisitor::translate(){
   low_level->define_label(label);
   
   // allocate spaces on stack
+  if (flag == 'o'){
+    for(int i = _mreg_count - 1; i >= 0; i--){
+      Instruction *pushq = new Instruction(MINS_PUSHQ, idx_to_register[i]);
+      low_level->add_instruction(pushq);
+      rsp_offset += 8;
+    }
+  }
+
   Instruction *pushq = new Instruction(MINS_SUBQ, stack_size, rsp);
   low_level->add_instruction(pushq);
   
@@ -181,6 +205,13 @@ void InstructionVisitor::translate(){
   }
   
   // free stack allocation and return 0
+  if (flag == 'o'){
+    for(int i = 0; i < _mreg_count; i++){
+      Instruction *pushq = new Instruction(MINS_PUSHQ, idx_to_register[i]);
+      low_level->add_instruction(pushq);
+      rsp_offset -= 8;
+    }
+  }
   Instruction *popq = new Instruction(MINS_ADDQ, stack_size, rsp);
   Instruction *ret0 = new Instruction(MINS_MOVL, Operand(OPERAND_INT_LITERAL, 0), eax);
   Instruction *ret = new Instruction(MINS_RET);
@@ -199,10 +230,28 @@ std::string InstructionVisitor::translate_const_def(Instruction *ins){
 // translate the localaddr instruction
 void InstructionVisitor::translate_localaddr(Instruction *ins){
   Operand address = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, ins->get_operand(1).get_int_value());
-  Instruction *load = new Instruction(MINS_LEAQ, address, r10);
-  Instruction *move = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
-  low_level->add_instruction(load);
-  low_level->add_instruction(move);
+  Instruction *load, *move;
+
+  if (flag == 'o'){
+    int mreg_alloc = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 0, &mreg_alloc);
+    if (mreg_alloc == 1) {
+      load = new Instruction(MINS_LEAQ, address, target);
+      low_level->add_instruction(load);
+    } else {
+      load = new Instruction(MINS_LEAQ, address, r10);
+      move = new Instruction(MINS_MOVQ, r10, target);
+      low_level->add_instruction(load);
+      low_level->add_instruction(move);
+    }
+    
+  } else {
+    load = new Instruction(MINS_LEAQ, address, r10);
+    move = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
+    low_level->add_instruction(load);
+    low_level->add_instruction(move);
+  }
+
 }
 
 // translate the readint instruction
@@ -217,7 +266,19 @@ void InstructionVisitor::translate_readint(Instruction *ins){
   }
 
   Instruction *move = new Instruction(MINS_MOVQ, inputfmt, rdi);
-  Instruction *load = new Instruction(MINS_LEAQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
+  Instruction *load;
+
+  if (flag == 'o'){
+    // std::cout << 'o' << std::endl;
+    int mreg_alloc = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 8 * stack_push, &mreg_alloc);
+
+    load = new Instruction(MINS_LEAQ, target, rsi);
+
+  } else {
+    load = new Instruction(MINS_LEAQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
+  }
+
   Instruction *call = new Instruction(MINS_CALL, read);
   low_level->add_instruction(move);
   low_level->add_instruction(load);
@@ -244,11 +305,17 @@ void InstructionVisitor::translate_writeint(Instruction *ins){
 
   Instruction *move = new Instruction(MINS_MOVQ, outputfmt, rdi);
   Instruction *load;
-  if(ins->get_operand(0).has_base_reg()){
-    load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
+
+  if (flag == 'o'){
+    int mreg_alloc = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 8 * stack_push, &mreg_alloc);
+  
+    load = new Instruction(MINS_MOVQ, target, rsi);
+
   } else {
-    load = new Instruction(MINS_MOVQ, ins->get_operand(0), rsi);
+    load = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0), 8 * stack_push), rsi);
   }
+
   Instruction *call = new Instruction(MINS_CALL, write);
   low_level->add_instruction(move);
   low_level->add_instruction(load);
@@ -264,68 +331,106 @@ void InstructionVisitor::translate_writeint(Instruction *ins){
 
 // translate the storeint instruction
 void InstructionVisitor::translate_storeint(Instruction *ins){
-  Instruction *move_int;
+  Instruction *move_int, *move_var, *move_finl;
 
-  if(ins->get_operand(1).has_base_reg()){
-    move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+  if (flag == 'o'){
+    int mreg_alloc_0 = 0;
+    int mreg_alloc_1 = 0;
+    Operand target_0 = vreg_ref(ins->get_operand(1), 0, &mreg_alloc_0);
+    Operand target_1 = vreg_ref(ins->get_operand(0), 0, &mreg_alloc_1);
+
+    Operand dest;
+    if (mreg_alloc_1) {
+      dest = Operand(OPERAND_MREG_MEMREF, target_1.get_base_reg());
+    } else {
+      move_var = new Instruction(MINS_MOVQ, target_1, r10);
+      dest = Operand(OPERAND_MREG_MEMREF, r10.get_base_reg());
+      low_level->add_instruction(move_var);
+    }
+
+    if (mreg_alloc_0) {
+      move_finl = new Instruction(MINS_MOVQ, target_0, dest);
+      low_level->add_instruction(move_finl);
+    } else {
+      move_int = new Instruction(MINS_MOVQ, target_0, r11);
+      move_finl = new Instruction(MINS_MOVQ, r11, dest);
+      low_level->add_instruction(move_int);
+      low_level->add_instruction(move_finl);
+    }
+  
   } else {
-    move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+    move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+    move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
+    Operand dest = Operand(OPERAND_MREG_MEMREF, r10.get_base_reg());
+    move_finl = new Instruction(MINS_MOVQ, r11, dest);  
+    low_level->add_instruction(move_int);
+    low_level->add_instruction(move_var);
+    low_level->add_instruction(move_finl);
   }
 
-  Instruction *move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
-
-  Operand dest = Operand(OPERAND_MREG_MEMREF, r10.get_base_reg());
-  
-  Instruction *move_finl = new Instruction(MINS_MOVQ, r11, dest);
-  
-  low_level->add_instruction(move_int);
-  low_level->add_instruction(move_var);
-  low_level->add_instruction(move_finl);
 }
 
 // translate the mov instruction
 void InstructionVisitor::translate_mov(Instruction *ins){
-  Instruction *move_int;
-  Operand reg;
+  Instruction *move_int, *move_finl;
+  Operand reg, targe_reg;
 
-  if(ins->get_operand(1).has_base_reg()){
-    move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r10);
-    reg = r10;
-    low_level->add_instruction(move_int);
-  } else {
-    // 
-    if(flag == 'o'){
-      reg = ins->get_operand(1);
+  if(flag == 'o'){
+      int mreg_alloc = 0;
+      int mreg_alloc_target = 0;
+      reg = vreg_ref(ins->get_operand(1), 0, &mreg_alloc);
+      targe_reg = vreg_ref(ins->get_operand(0), 0, &mreg_alloc_target);
+      if (mreg_alloc) {
+        move_finl = new Instruction(MINS_MOVQ, reg, targe_reg);
+        low_level->add_instruction(move_finl);
+      } else {
+        move_int = new Instruction(MINS_MOVQ, reg, r10);
+        move_finl = new Instruction(MINS_MOVQ, r10, targe_reg);
+        
+        low_level->add_instruction(move_int);
+        low_level->add_instruction(move_finl);
+      }
     } else {
-      move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r10);
+      move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r10);
+      move_finl = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
       low_level->add_instruction(move_int);
+      low_level->add_instruction(move_finl);
     }
 
-  }
-  
-  Instruction *move_finl = new Instruction(MINS_MOVQ, reg, vreg_ref(ins->get_operand(0)));
-  
-  low_level->add_instruction(move_finl);
 }
 
 // translate the loadint instruction
 void InstructionVisitor::translate_loadint(Instruction *ins){
-  Instruction *move_var;
+  Instruction *move_var, *load_int, *store_int;
+  Operand memr_ref;
+  if (flag == 'o'){
+    int mreg_alloc_0 = 0;
+    int mreg_alloc_1 = 0;
+    Operand target_0 = vreg_ref(ins->get_operand(1), 0, &mreg_alloc_0);
+    Operand target_1 = vreg_ref(ins->get_operand(0), 0, &mreg_alloc_1);
 
-  if(ins->get_operand(1).has_base_reg()){
-    move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+    if (mreg_alloc_0) {
+      memr_ref = Operand(OPERAND_MREG_MEMREF, target_0.get_base_reg());
+    } else {
+      move_var = new Instruction(MINS_MOVQ, target_0, r11);
+      low_level->add_instruction(move_var);
+      memr_ref = Operand(OPERAND_MREG_MEMREF, r11.get_base_reg());
+    }
+    load_int = new Instruction(MINS_MOVQ, memr_ref, r11);
+    store_int = new Instruction(MINS_MOVQ, r11, target_1);
+    low_level->add_instruction(load_int);
+    low_level->add_instruction(store_int);
   } else {
-    move_var = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+    move_var = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
+    memr_ref = Operand(OPERAND_MREG_MEMREF, r11.get_base_reg());
+  
+    load_int = new Instruction(MINS_MOVQ, memr_ref, r11);
+    store_int = new Instruction(MINS_MOVQ, r11, vreg_ref(ins->get_operand(0)));
+    
+    low_level->add_instruction(move_var);
+    low_level->add_instruction(load_int);
+    low_level->add_instruction(store_int);
   }
-
-  Operand memr_ref = Operand(OPERAND_MREG_MEMREF, r11.get_base_reg());
-  
-  Instruction *load_int = new Instruction(MINS_MOVQ, memr_ref, r11);
-  Instruction *store_int = new Instruction(MINS_MOVQ, r11, vreg_ref(ins->get_operand(0)));
-  
-  low_level->add_instruction(move_var);
-  low_level->add_instruction(load_int);
-  low_level->add_instruction(store_int);
 }
 
 // translate the loadconstint instruction
@@ -337,51 +442,79 @@ void InstructionVisitor::translate_loadcosntint(Instruction *ins){
 // translate the divide instruction
 void InstructionVisitor::translate_div(Instruction *ins){
   Instruction *move_dividend;
-  Instruction *move_divisor;
+  Instruction *move_divisor, *div, *move_result;
 
   // resolve memory reference
-  if(ins->get_operand(1).has_base_reg()){
-    move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
-  } else {
-    move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
-  }
+  if (flag == 'o') {
+    Operand op1, op2, target;
+    int op1_flg, op2_flg, target_flg;
+    op1 = vreg_ref(ins->get_operand(1), 0, &op1_flg);
+    op2 = vreg_ref(ins->get_operand(2), 0, &op2_flg);
+    target = vreg_ref(ins->get_operand(0), 0, &target_flg);
 
-  if(ins->get_operand(2).has_base_reg()){
-    move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  } else {
-    move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
-  }
+    move_dividend = new Instruction(MINS_MOVQ, op1, rax);
+    move_divisor = new Instruction(MINS_MOVQ, op2, r10);
+    div = new Instruction(MINS_IDIVQ, r10);
+    move_result = new Instruction(MINS_MOVQ, rax, target);
 
-  Instruction *div = new Instruction(MINS_IDIVQ, r10);
-  Instruction *move_result = new Instruction(MINS_MOVQ, rax, vreg_ref(ins->get_operand(0)));
-  
-  low_level->add_instruction(move_dividend);
-  low_level->add_instruction(cqto);
-  low_level->add_instruction(move_divisor);
-  low_level->add_instruction(div);
-  low_level->add_instruction(move_result);
+  } else {  
+    if(ins->get_operand(1).has_base_reg()){
+      move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
+    } else {
+      move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
+    }
+
+    if(ins->get_operand(2).has_base_reg()){
+      move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+    } else {
+      move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+    }
+
+    div = new Instruction(MINS_IDIVQ, r10);
+    move_result = new Instruction(MINS_MOVQ, rax, vreg_ref(ins->get_operand(0)));
+    }
+
+    low_level->add_instruction(move_dividend);
+    low_level->add_instruction(cqto);
+    low_level->add_instruction(move_divisor);
+    low_level->add_instruction(div);
+    low_level->add_instruction(move_result);
 }
 
 // translate the mod instruction
 void InstructionVisitor::translate_mod(Instruction *ins){
   Instruction *move_dividend;
-  Instruction *move_divisor;
+  Instruction *move_divisor, *div, *move_result;
 
-  // resolve memory reference
-  if(ins->get_operand(1).has_base_reg()){
-    move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
+  if (flag == 'o') {
+    Operand op1, op2, target;
+    int op1_flg, op2_flg, target_flg;
+    op1 = vreg_ref(ins->get_operand(1), 0, &op1_flg);
+    op2 = vreg_ref(ins->get_operand(2), 0, &op2_flg);
+    target = vreg_ref(ins->get_operand(0), 0, &target_flg);
+
+    move_dividend = new Instruction(MINS_MOVQ, op1, rax);
+    move_divisor = new Instruction(MINS_MOVQ, op2, r10);
+    div = new Instruction(MINS_IDIVQ, r10);
+    move_result = new Instruction(MINS_MOVQ, rdx, target);
+
   } else {
-    move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
-  }
+    // resolve memory reference
+    if(ins->get_operand(1).has_base_reg()){
+      move_dividend = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), rax);
+    } else {
+      move_dividend = new Instruction(MINS_MOVQ, ins->get_operand(1), rax);
+    }
 
-  if(ins->get_operand(2).has_base_reg()){
-    move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  } else {
-    move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
-  }
+    if(ins->get_operand(2).has_base_reg()){
+      move_divisor = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
+    } else {
+      move_divisor = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+    }
 
-  Instruction *div = new Instruction(MINS_IDIVQ, r10);
-  Instruction *move_result = new Instruction(MINS_MOVQ, rdx, vreg_ref(ins->get_operand(0)));
+    div = new Instruction(MINS_IDIVQ, r10);
+    move_result = new Instruction(MINS_MOVQ, rdx, vreg_ref(ins->get_operand(0)));
+  }
   
   low_level->add_instruction(move_dividend);
   low_level->add_instruction(cqto);
@@ -394,9 +527,42 @@ void InstructionVisitor::translate_mod(Instruction *ins){
 void InstructionVisitor::translate_add(Instruction *ins){
   Operand reg_0;
   Operand reg_1;
+  Instruction *add, *move_result;
 
-  int reg_0_constant = 0;
+  if (flag == 'o') {
+    int target_flg = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 0, &target_flg);
+    
+    int op_0_flg = 0;
+    int op_1_flg = 0;
+    reg_0 = vreg_ref(ins->get_operand(1), 0, &op_0_flg);
+    reg_1 = vreg_ref(ins->get_operand(2), 0, &op_1_flg);
 
+    if(ins->get_operand(1).is_memref()) {
+      reg_0 = reg_0.to_memref();
+    }
+    if(ins->get_operand(2).is_memref()) {
+      reg_1 = reg_1.to_memref();
+    }
+
+    if (target_flg) {
+      Instruction *move = new Instruction(MINS_MOVQ, reg_1, target);
+      low_level->add_instruction(move);
+      add = new Instruction(MINS_ADDQ, reg_0, target);
+      low_level->add_instruction(add);
+    } else {
+      if (reg_0.has_base_reg()){
+        add = new Instruction(MINS_ADDQ, reg_1, reg_0);
+        move_result = new Instruction(MINS_MOVQ, reg_0, target);
+      } else {
+        add = new Instruction(MINS_ADDQ, reg_0, reg_1);
+        move_result = new Instruction(MINS_MOVQ, reg_1, target);
+      }
+      low_level->add_instruction(add);
+      low_level->add_instruction(move_result);
+    }
+  } else {
+      int reg_0_constant = 0;
   // resolve memory reference
   move_first(ins, 1, &reg_0, &reg_0_constant);
   move_second(ins, 2, &reg_1, reg_0_constant);
@@ -407,9 +573,9 @@ void InstructionVisitor::translate_add(Instruction *ins){
     reg_1 = reg_1.to_memref();
   }
   
-  Instruction *add;
-  Instruction *move_result;
   
+  
+
   if(reg_0_constant == 0) {
     add = new Instruction(MINS_ADDQ, reg_1, reg_0);
     move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
@@ -420,33 +586,65 @@ void InstructionVisitor::translate_add(Instruction *ins){
 
   low_level->add_instruction(add);
   low_level->add_instruction(move_result);
+  }
+
 }
 
 // translate the sub instruction
 void InstructionVisitor::translate_sub(Instruction *ins){
   Operand reg_0;
   Operand reg_1;
-
-  // resolve memory reference
-  move_first(ins, 2, &reg_1);
-  move_second(ins, 1, &reg_0, 1);
-
-  // resolve memory reference
-  if(ins->get_operand(1).is_memref()) {
-    reg_0 = reg_0.to_memref();
-  }
-  if(ins->get_operand(2).is_memref()) {
-    reg_1 = reg_1.to_memref();
-  }
-  
   Instruction *add;
   Instruction *move_result;
-  
-  add = new Instruction(MINS_SUBQ, reg_1, reg_0);
-  move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
 
-  low_level->add_instruction(add);
-  low_level->add_instruction(move_result);
+  if (flag == 'o'){
+    int target_flg = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 0, &target_flg);
+    
+    int op_0_flg = 0;
+    int op_1_flg = 0;
+    reg_0 = vreg_ref(ins->get_operand(1), 0, &op_0_flg);
+    reg_1 = vreg_ref(ins->get_operand(2), 0, &op_1_flg);
+
+    if(ins->get_operand(1).is_memref()) {
+      reg_0 = reg_0.to_memref();
+    }
+    if(ins->get_operand(2).is_memref()) {
+      reg_1 = reg_1.to_memref();
+    }
+
+    if (target_flg) {
+      Instruction *move = new Instruction(MINS_MOVQ, reg_0, target);
+      low_level->add_instruction(move);
+      add = new Instruction(MINS_IMULQ, reg_1, target);
+      low_level->add_instruction(add);
+    } else {
+      add = new Instruction(MINS_IMULQ, reg_1, reg_0);
+      move_result = new Instruction(MINS_MOVQ, reg_0, target);
+
+      low_level->add_instruction(add);
+      low_level->add_instruction(move_result);
+    }
+  
+  } else {
+    // resolve memory reference
+    move_first(ins, 2, &reg_1);
+    move_second(ins, 1, &reg_0, 1);
+
+    // resolve memory reference
+    if(ins->get_operand(1).is_memref()) {
+      reg_0 = reg_0.to_memref();
+    }
+    if(ins->get_operand(2).is_memref()) {
+      reg_1 = reg_1.to_memref();
+    }
+    
+    add = new Instruction(MINS_SUBQ, reg_1, reg_0);
+    move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+
+    low_level->add_instruction(add);
+    low_level->add_instruction(move_result);
+  }
 }
 
 // translate the mul instruction
@@ -455,44 +653,100 @@ void InstructionVisitor::translate_mul(Instruction *ins){
   Operand reg_0;
   Operand reg_1;
 
-  int reg_0_constant = 0;
-  // resolve memory reference
-  move_first(ins, 1, &reg_0, &reg_0_constant);
-  move_second(ins, 2, &reg_1, reg_0_constant);
-
-  // resolve memory reference
-  if(ins->get_operand(1).is_memref()) {
-    reg_0 = reg_0.to_memref();
-  }
-  if(ins->get_operand(2).is_memref()) {
-    reg_1 = reg_1.to_memref();
-  }
-
   Instruction *add;
   Instruction *move_result;
-  if(reg_0_constant == 0) {
-    add = new Instruction(MINS_IMULQ, reg_1, reg_0);
-    move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+
+  if (flag == 'o') {
+    int target_flg = 0;
+    Operand target = vreg_ref(ins->get_operand(0), 0, &target_flg);
+    
+    int op_0_flg = 0;
+    int op_1_flg = 0;
+    reg_0 = vreg_ref(ins->get_operand(1), 0, &op_0_flg);
+    reg_1 = vreg_ref(ins->get_operand(2), 0, &op_1_flg);
+
+    if(ins->get_operand(1).is_memref()) {
+      reg_0 = reg_0.to_memref();
+    }
+    if(ins->get_operand(2).is_memref()) {
+      reg_1 = reg_1.to_memref();
+    }
+
+    if (target_flg) {
+      Instruction *move = new Instruction(MINS_MOVQ, reg_1, target);
+      low_level->add_instruction(move);
+      add = new Instruction(MINS_IMULQ, reg_0, target);
+      low_level->add_instruction(add);
+    } else {
+      if (reg_0.has_base_reg()){
+        add = new Instruction(MINS_IMULQ, reg_1, reg_0);
+        move_result = new Instruction(MINS_MOVQ, reg_0, target);
+      } else {
+        add = new Instruction(MINS_IMULQ, reg_0, reg_1);
+        move_result = new Instruction(MINS_MOVQ, reg_1, target);
+      }
+      low_level->add_instruction(add);
+      low_level->add_instruction(move_result);
+    }
   } else {
-    add = new Instruction(MINS_IMULQ, reg_0, reg_1);
-    move_result = new Instruction(MINS_MOVQ, reg_1, vreg_ref(ins->get_operand(0)));
+    int reg_0_constant = 0;
+    // resolve memory reference
+    move_first(ins, 1, &reg_0, &reg_0_constant);
+    move_second(ins, 2, &reg_1, reg_0_constant);
+
+    // resolve memory reference
+    if(ins->get_operand(1).is_memref()) {
+      reg_0 = reg_0.to_memref();
+    }
+    if(ins->get_operand(2).is_memref()) {
+      reg_1 = reg_1.to_memref();
+    }
+
+    if(reg_0_constant == 0) {
+      add = new Instruction(MINS_IMULQ, reg_1, reg_0);
+      move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+    } else {
+      add = new Instruction(MINS_IMULQ, reg_0, reg_1);
+      move_result = new Instruction(MINS_MOVQ, reg_1, vreg_ref(ins->get_operand(0)));
+    }
+    
+    low_level->add_instruction(add);
+    low_level->add_instruction(move_result);
   }
-  
-  low_level->add_instruction(add);
-  low_level->add_instruction(move_result);
+
 }
 
 // translate the cmp instruction
 void InstructionVisitor::translate_cmp(Instruction *ins){
-
   Operand reg_0;
   Operand reg_1;
-  // resolve memory reference
-  move_first(ins, 0, &reg_0);
-  move_second(ins, 1, &reg_1);
+  if (flag == 'o') {
+    int op_0_flg = 0;
+    int op_1_flg = 0;
+    reg_0 = vreg_ref(ins->get_operand(0), 0, &op_0_flg);
+    reg_1 = vreg_ref(ins->get_operand(1), 0, &op_1_flg);
 
-  Instruction *cmp = new Instruction(MINS_CMPQ, reg_1, reg_0);
-  low_level->add_instruction(cmp);
+    if (op_0_flg == 0){
+      Instruction *move = new Instruction(MINS_MOVQ, reg_0, r10);
+      low_level->add_instruction(move);
+      reg_0 = r10;
+    }
+
+    if (op_1_flg == 0){
+      Instruction *move = new Instruction(MINS_MOVQ, reg_1, r11);
+      low_level->add_instruction(move);
+      reg_1 = r11;
+    }
+  } else {
+
+    // resolve memory reference
+    move_first(ins, 0, &reg_0);
+    move_second(ins, 1, &reg_1);
+
+    Instruction *cmp = new Instruction(MINS_CMPQ, reg_1, reg_0);
+    low_level->add_instruction(cmp);
+  }
+
 }
 
 // translate the jump instruction
@@ -538,9 +792,24 @@ void InstructionVisitor::translate_jne(Instruction *ins){
 }
 
 // get var reference to a vreg
-struct Operand InstructionVisitor::vreg_ref(Operand vreg, int bias){
-  struct Operand memr_address = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, _var_offset + 8 * vreg.get_base_reg() + bias);
-  return memr_address;
+struct Operand InstructionVisitor::vreg_ref(Operand vreg, int bias, int *flg){
+  if (this->flag == 'o') {
+    assert(flg != nullptr);
+    int mreg_id = vreg.get_m_reg_to_alloc();
+    if (mreg_id >= 0){
+      struct Operand mreg = idx_to_register[mreg_id];
+      *flg = 1;
+      return mreg;
+    } 
+  }
+
+  if(vreg.has_base_reg()){
+    struct Operand memr_address = Operand(OPERAND_MREG_MEMREF_OFFSET, MREG_RSP, _var_offset + 8 * vreg.get_base_reg() + bias);
+    return memr_address;
+  } else {
+    return vreg;
+  }
+  
 }
 
 void InstructionVisitor::move_first(Instruction *ins, int operand_idx, struct Operand *reg_0, int *reg_0_constant){
@@ -589,8 +858,8 @@ struct InstructionSequence *InstructionVisitor::get_lowlevel(){
   return low_level;
 }
 
-struct InstructionVisitor *lowlevel_code_generator_create(InstructionSequence *iseq, int var_offset, int vreg_count){
-  return new InstructionVisitor(iseq, var_offset, vreg_count);
+struct InstructionVisitor *lowlevel_code_generator_create(InstructionSequence *iseq, int var_offset, int vreg_count, int mreg_count){
+  return new InstructionVisitor(iseq, var_offset, vreg_count, mreg_count);
 }
 
 void generator_generate_lowlevel(struct InstructionVisitor *ivst){

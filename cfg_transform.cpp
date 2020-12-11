@@ -6,7 +6,7 @@
 #include "live_vregs.h"
 #include "x86_64.h"
 #include <map>
-#include <set>
+
 
 ControlFlowGraphTransform::ControlFlowGraphTransform(ControlFlowGraph *cfg)
   : m_cfg(cfg) {
@@ -73,7 +73,7 @@ HighLevelControlFlowGraphTransform::~HighLevelControlFlowGraphTransform(){
 }
 
 InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(BasicBlock *bb){
-  std::cout << "enter basic block transform" << std::endl;
+  //std::cout << "enter basic block transform" << std::endl;
   auto it = bb->begin();
 
   Instruction* ins;
@@ -90,24 +90,32 @@ InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(B
     Instruction* new_ins = ins->duplicate();
 
     for (int i = 0; i < num_operand; i++ ){
-      if (mreg_alloc < mreg_aval) {
+      
         Operand *op = &(*new_ins)[i];
+
         if (op->get_kind() == OPERAND_VREG || op->get_kind() == OPERAND_VREG_MEMREF_OFFSET) {
-          if (vreg_mreg.find(op->get_base_reg()) == vreg_mreg.end()){
-            op->set_m_reg_to_alloc(free_mreg.back());
-            std::cout << "vreg: " << op->get_base_reg() << "mreg: " << free_mreg.back() << "op_reg: " << op->get_m_reg_to_alloc() << std::endl;
-            
-            vreg_mreg.insert({op->get_base_reg(), free_mreg.back()});
-            free_mreg.pop_back();
-            mreg_alloc++;
-          } else {
-            op->set_m_reg_to_alloc(vreg_mreg.find(op->get_base_reg())->second);
-          }
+          
+            if (vreg_mreg.find(op->get_base_reg()) == vreg_mreg.end()){
+              if (mreg_alloc < mreg_aval) {
+                op->set_m_reg_to_alloc(free_mreg.back());
+                // std::cout << "vreg: " << op->get_base_reg() << "mreg: " << free_mreg.back() << "op_reg: " << op->get_m_reg_to_alloc() << std::endl;
+                
+                vreg_mreg.insert({op->get_base_reg(), free_mreg.back()});
+                free_mreg.pop_back();
+                mreg_alloc++;
+
+                max_mreg_use = (max_mreg_use>mreg_alloc)?max_mreg_use:mreg_alloc;
+              } else {
+                if (visited.find(op->get_base_reg()) == visited.end()) {
+                  visited.insert(op->get_base_reg());
+                  vreg_count++;
+                }
+              }
+            } else {
+              op->set_m_reg_to_alloc(vreg_mreg.find(op->get_base_reg())->second);
+            }
         }
-      } else {
-        break;
-      }
-    }
+      } 
     new_iseq->add_instruction(new_ins);
     reset_mreg_after_ins(bb, ins);
     it++;

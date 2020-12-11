@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include "live_vregs.h"
+#include <set>
 
 class ControlFlowGraph;
 
@@ -28,8 +29,13 @@ private:
   LiveVregs *lvreg;
   int mreg_aval = 8;
   int mreg_alloc = 0;
+
+  int max_mreg_use = 0;
+
+  int vreg_count = 0;
   std::vector<int> free_mreg = {0, 1, 2, 3, 4, 5, 6, 7};
   std::map<int, int> vreg_mreg;
+  std::set<int> visited;
 
 public:
   HighLevelControlFlowGraphTransform(ControlFlowGraph *cfg, LiveVregs *lvreg);
@@ -40,6 +46,13 @@ public:
 
   void peephole(Operand m_reg, Operand v_reg, InstructionSequence::iterator it, InstructionSequence::iterator end, std::vector<int> *deleted);
 
+  int get_vreg_count() {
+    return vreg_count;
+  }
+
+  int get_max_mreg_use() {
+    return max_mreg_use;
+  }
 };
 
 #endif // CFG_TRANSFORM_H

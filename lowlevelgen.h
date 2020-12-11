@@ -15,7 +15,7 @@ extern "C" {
 
 // API functions
 // create a low-level code translator obj
-struct InstructionVisitor *lowlevel_code_generator_create(InstructionSequence *iseq, int var_offset, int vreg_count);
+struct InstructionVisitor *lowlevel_code_generator_create(InstructionSequence *iseq, int var_offset, int vreg_count, int mreg_count=0);
 
 // generate low-level code
 void generator_generate_lowlevel(struct InstructionVisitor *ivst);

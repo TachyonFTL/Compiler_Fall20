@@ -110,6 +110,10 @@ int main(int argc, char **argv) {
 
     struct InstructionSequence *code = generator_get_highlevel(cgt);
 
+    int var_offset = get_var_offset(get_sym_tab(ctx)); 
+    int vreg_count = get_vreg_offset(cgt);
+    int mreg_count = 0;
+
     if (optim){
       HighLevelControlFlowGraphBuilder cfg_builder(code);
       ControlFlowGraph *cfg = cfg_builder.build();
@@ -120,21 +124,28 @@ int main(int argc, char **argv) {
       HighLevelControlFlowGraphTransform cfg_transform(cfg, &lvreg);
       ControlFlowGraph *new_cfg = cfg_transform.transform_cfg();
 
+      vreg_count = cfg_transform.get_vreg_count();
+      mreg_count = cfg_transform.get_max_mreg_use();
+
       HighLevelControlFlowGraphPrinter print_cfg(new_cfg);
       LiveVregsControlFlowGraphPrinter print_lvergs(new_cfg,  &lvreg);
-      print_lvergs.print();
+      // print_lvergs.print();
       // print_cfg.print();
       // return 0;
+      code = new_cfg->create_instruction_sequence();
     }
     
+
+
     if (mode == PRINT_HIGHLEVEL) {
       PrintHighLevelInstructionSequence print_ins(code);
       print_ins.print();
     } else {
-      struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, get_var_offset(get_sym_tab(ctx)), get_vreg_offset(cgt));
+      struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, var_offset, vreg_count, mreg_count);
       if (optim){
         lowlevel_generator_set_flag(lowlevel_generator, 'o');
-      }
+      } 
+
       generator_generate_lowlevel(lowlevel_generator);
       struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
   
