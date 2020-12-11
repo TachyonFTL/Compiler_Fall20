@@ -45,6 +45,7 @@ public:
   virtual ~HighLevelControlFlowGraphBuilder();
 
   virtual bool falls_through(Instruction *ins);
+
 };
 
 class HighLevelControlFlowGraphPrinter : public ControlFlowGraphPrinter {
@@ -53,5 +54,11 @@ public:
   ~HighLevelControlFlowGraphPrinter();
 
   virtual void print_basic_block(BasicBlock *bb);
+  std::string format_instruction(BasicBlock *bb, Instruction *ins);
 };
+
+int is_def(Instruction *ins);
+
+int is_use(Instruction *ins, int idx);
+
 #endif // HIGHLEVEL_H

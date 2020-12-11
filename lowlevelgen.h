@@ -23,6 +23,7 @@ void generator_generate_lowlevel(struct InstructionVisitor *ivst);
 // get the generated low-level code 
 struct InstructionSequence *generate_lowlevel(struct InstructionVisitor *ivst);
 
+void lowlevel_generator_set_flag(struct InstructionVisitor *ivst, char flag);
 #ifdef __cplusplus
 }
 #endif

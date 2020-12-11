@@ -21,6 +21,7 @@ class InstructionVisitor{
 
     // store stack pointer
     int rsp_offset;
+    char flag = 'n';
 
   public:
     InstructionVisitor(InstructionSequence *iseq, int var_offset, int vreg_count);
@@ -52,10 +53,14 @@ class InstructionVisitor{
     void translate_mod(Instruction *ins);
     void translate_mov(Instruction *ins);
 
+    void move_first(Instruction *ins, int operand_idx, struct Operand *reg_0, int *reg_0_constant = nullptr);
+    void move_second(Instruction *ins, int operand_idx, struct Operand *reg_1, int reg_0_constant = 0);
 
     struct InstructionSequence *get_lowlevel();
     std::string translate_const_def(Instruction *ins);
     
+    void set_flag(char flag);
+
   private:
     typedef void (InstructionVisitor::*func_ptr)(Instruction*);
     // function map based on high-level operator
@@ -117,6 +122,10 @@ InstructionVisitor::InstructionVisitor(InstructionSequence *iseq, int var_offset
   _vreg_count = vreg_count;
   rsp_offset =  _var_offset + 8 * vreg_count;
   stack_size = Operand(OPERAND_INT_LITERAL, rsp_offset);
+}
+
+void InstructionVisitor::set_flag(char flag){
+  this->flag = flag;
 }
 
 // main translation function
@@ -277,16 +286,25 @@ void InstructionVisitor::translate_storeint(Instruction *ins){
 // translate the mov instruction
 void InstructionVisitor::translate_mov(Instruction *ins){
   Instruction *move_int;
+  Operand reg;
 
   if(ins->get_operand(1).has_base_reg()){
     move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r10);
+    reg = r10;
+    low_level->add_instruction(move_int);
   } else {
-    move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r10);
+    // 
+    if(flag == 'o'){
+      reg = ins->get_operand(1);
+    } else {
+      move_int = new Instruction(MINS_MOVQ, ins->get_operand(1), r10);
+      low_level->add_instruction(move_int);
+    }
+
   }
   
-  Instruction *move_finl = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
+  Instruction *move_finl = new Instruction(MINS_MOVQ, reg, vreg_ref(ins->get_operand(0)));
   
-  low_level->add_instruction(move_int);
   low_level->add_instruction(move_finl);
 }
 
@@ -374,79 +392,73 @@ void InstructionVisitor::translate_mod(Instruction *ins){
 
 // translate the add instruction
 void InstructionVisitor::translate_add(Instruction *ins){
-  Instruction *move_first;
-  Instruction *move_second;
+  Operand reg_0;
+  Operand reg_1;
+
+  int reg_0_constant = 0;
 
   // resolve memory reference
-  if(ins->get_operand(1).has_base_reg()){
-    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  } else {
-    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
+  move_first(ins, 1, &reg_0, &reg_0_constant);
+  move_second(ins, 2, &reg_1, reg_0_constant);
+  if(ins->get_operand(1).is_memref()) {
+    reg_0 = reg_0.to_memref();
   }
-
-  if(ins->get_operand(2).has_base_reg()){
-    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  } else {
-    move_second = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+  if(ins->get_operand(2).is_memref()) {
+    reg_1 = reg_1.to_memref();
   }
-
-  Instruction *add = new Instruction(MINS_ADDQ, r11, r10);
-
-  Instruction *move_result = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
   
-  low_level->add_instruction(move_first);
-  low_level->add_instruction(move_second);
+  Instruction *add;
+  Instruction *move_result;
+  
+  if(reg_0_constant == 0) {
+    add = new Instruction(MINS_ADDQ, reg_1, reg_0);
+    move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+  } else {
+    add = new Instruction(MINS_ADDQ, reg_0, reg_1);
+    move_result = new Instruction(MINS_MOVQ, reg_1, vreg_ref(ins->get_operand(0)));
+  }
+
   low_level->add_instruction(add);
   low_level->add_instruction(move_result);
 }
 
 // translate the sub instruction
 void InstructionVisitor::translate_sub(Instruction *ins){
-  Instruction *move_first;
-  Instruction *move_second;
+  Operand reg_0;
+  Operand reg_1;
 
   // resolve memory reference
-  if(ins->get_operand(1).has_base_reg()){
-    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  } else {
-    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
-  }
+  move_first(ins, 2, &reg_1);
+  move_second(ins, 1, &reg_0, 1);
 
-  if(ins->get_operand(2).has_base_reg()){
-    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  } else {
-    move_second = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
+  // resolve memory reference
+  if(ins->get_operand(1).is_memref()) {
+    reg_0 = reg_0.to_memref();
+  }
+  if(ins->get_operand(2).is_memref()) {
+    reg_1 = reg_1.to_memref();
   }
   
-  Instruction *add = new Instruction(MINS_SUBQ, r10, r11);
-  Instruction *move_result = new Instruction(MINS_MOVQ, r11, vreg_ref(ins->get_operand(0)));
+  Instruction *add;
+  Instruction *move_result;
   
-  low_level->add_instruction(move_first);
-  low_level->add_instruction(move_second);
+  add = new Instruction(MINS_SUBQ, reg_1, reg_0);
+  move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+
   low_level->add_instruction(add);
   low_level->add_instruction(move_result);
 }
 
 // translate the mul instruction
 void InstructionVisitor::translate_mul(Instruction *ins){
-  Instruction *move_first;
-  Instruction *move_second;
 
+  Operand reg_0;
+  Operand reg_1;
+
+  int reg_0_constant = 0;
   // resolve memory reference
-  if(ins->get_operand(1).has_base_reg()){
-    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  } else {
-    move_first = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
-  }
-
-  if(ins->get_operand(2).has_base_reg()){
-    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(2)), r10);
-  } else {
-    move_second = new Instruction(MINS_MOVQ, ins->get_operand(2), r10);
-  }
-
-  Operand reg_0 = r11;
-  Operand reg_1 = r10;
+  move_first(ins, 1, &reg_0, &reg_0_constant);
+  move_second(ins, 2, &reg_1, reg_0_constant);
 
   // resolve memory reference
   if(ins->get_operand(1).is_memref()) {
@@ -456,36 +468,30 @@ void InstructionVisitor::translate_mul(Instruction *ins){
     reg_1 = reg_1.to_memref();
   }
 
-  Instruction *add = new Instruction(MINS_IMULQ, reg_0, reg_1);
-  Instruction *move_result = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
+  Instruction *add;
+  Instruction *move_result;
+  if(reg_0_constant == 0) {
+    add = new Instruction(MINS_IMULQ, reg_1, reg_0);
+    move_result = new Instruction(MINS_MOVQ, reg_0, vreg_ref(ins->get_operand(0)));
+  } else {
+    add = new Instruction(MINS_IMULQ, reg_0, reg_1);
+    move_result = new Instruction(MINS_MOVQ, reg_1, vreg_ref(ins->get_operand(0)));
+  }
   
-  low_level->add_instruction(move_first);
-  low_level->add_instruction(move_second);
   low_level->add_instruction(add);
   low_level->add_instruction(move_result);
 }
 
 // translate the cmp instruction
 void InstructionVisitor::translate_cmp(Instruction *ins){
-  Instruction *move_first;
-  Instruction *move_second;
 
+  Operand reg_0;
+  Operand reg_1;
   // resolve memory reference
-  if(ins->get_operand(0).has_base_reg()){
-    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(0)), r10);
-  } else {
-    move_first = new Instruction(MINS_MOVQ, ins->get_operand(0), r10);
-  }
+  move_first(ins, 0, &reg_0);
+  move_second(ins, 1, &reg_1);
 
-  if(ins->get_operand(1).has_base_reg()){
-    move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r11);
-  } else {
-    move_second = new Instruction(MINS_MOVQ, ins->get_operand(1), r11);
-  }
-
-  Instruction *cmp = new Instruction(MINS_CMPQ, r11, r10);
-  low_level->add_instruction(move_first);
-  low_level->add_instruction(move_second);
+  Instruction *cmp = new Instruction(MINS_CMPQ, reg_1, reg_0);
   low_level->add_instruction(cmp);
 }
 
@@ -537,6 +543,44 @@ struct Operand InstructionVisitor::vreg_ref(Operand vreg, int bias){
   return memr_address;
 }
 
+void InstructionVisitor::move_first(Instruction *ins, int operand_idx, struct Operand *reg_0, int *reg_0_constant){
+  Instruction *move_first;
+  if(ins->get_operand(operand_idx).has_base_reg()){
+    move_first = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(operand_idx)), r10);
+    *reg_0 = r10;
+    low_level->add_instruction(move_first);
+  } else {
+    if (flag == 'o'){
+      *reg_0 = ins->get_operand(operand_idx);
+      if (reg_0_constant != nullptr){
+        *reg_0_constant = 1;
+      }
+    } else {
+      move_first = new Instruction(MINS_MOVQ, ins->get_operand(operand_idx), r10);
+      *reg_0 = r10;
+      low_level->add_instruction(move_first);
+    }
+    // 
+  }
+}
+
+void InstructionVisitor::move_second(Instruction *ins, int operand_idx, struct Operand *reg_1, int reg_0_constant){
+  Instruction *move_second;
+  if(ins->get_operand(operand_idx).has_base_reg()){
+      move_second = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(operand_idx)), r11);
+      *reg_1 = r11;
+      low_level->add_instruction(move_second);
+    } else {
+      if (flag == 'o' && reg_0_constant == 0){
+        *reg_1 = ins->get_operand(operand_idx);
+      } else {
+        move_second = new Instruction(MINS_MOVQ, ins->get_operand(operand_idx), r11);
+        *reg_1 = r11;
+        low_level->add_instruction(move_second);
+      }
+    }
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////
 // API functions
@@ -555,4 +599,8 @@ void generator_generate_lowlevel(struct InstructionVisitor *ivst){
 
 struct InstructionSequence *generate_lowlevel(struct InstructionVisitor *ivst){
   return ivst->get_lowlevel();
+}
+
+void lowlevel_generator_set_flag(struct InstructionVisitor *ivst, char flag){
+  ivst->set_flag(flag);
 }

@@ -1,4 +1,6 @@
 #include <cassert>
+#include <string>
+#include "cfg.h"
 #include "highlevel.h"
 
 PrintHighLevelInstructionSequence::PrintHighLevelInstructionSequence(InstructionSequence *ins)
@@ -63,6 +65,74 @@ HighLevelControlFlowGraphPrinter::~HighLevelControlFlowGraphPrinter() {
 }
 
 void HighLevelControlFlowGraphPrinter::print_basic_block(BasicBlock *bb) {
-  PrintHighLevelInstructionSequence print_hliseq(bb);
-  print_hliseq.print();
+  for (auto i = bb->cbegin(); i != bb->cend(); i++) {
+      Instruction *ins = *i;
+      std::string s = format_instruction(bb, ins);
+      for(int i = 0; i < ins->get_num_operands(); i++) {
+        s += " " + std::to_string(ins->get_operand(i).get_m_reg_to_alloc());
+      }
+      printf("\t%s\n", s.c_str());
+  }
+}
+
+std::string HighLevelControlFlowGraphPrinter::format_instruction(BasicBlock *bb,
+                                                                 Instruction *ins) {
+  PrintHighLevelInstructionSequence p(bb);
+  return p.format_instruction(ins);
+}
+
+int is_def(Instruction *ins){
+  int m_opcode;
+  m_opcode = ins->get_opcode();
+  if (m_opcode ==  HINS_INT_ADD ||
+      m_opcode ==  HINS_INT_SUB ||
+      m_opcode ==  HINS_INT_MUL ||
+      m_opcode ==  HINS_INT_DIV ||
+      m_opcode ==  HINS_INT_MOD ||
+      m_opcode ==  HINS_MOV ||
+      m_opcode ==  HINS_STORE_INT ||
+      m_opcode ==  HINS_LOAD_ICONST ||
+      m_opcode ==  HINS_LOCALADDR ||
+      m_opcode == HINS_READ_INT ||
+      m_opcode == HINS_LOAD_INT) {
+    return 1;
+  } else {
+    return 0;
+  }
+
+}
+
+int is_use(Instruction *ins, int idx){
+  int m_opcode;
+  m_opcode = ins->get_opcode();
+  if (m_opcode ==  HINS_INT_ADD ||
+      m_opcode ==  HINS_INT_SUB ||
+      m_opcode ==  HINS_INT_MUL ||
+      m_opcode ==  HINS_INT_DIV ||
+      m_opcode ==  HINS_INT_MOD ||
+      m_opcode ==  HINS_MOV ||
+      m_opcode ==  HINS_STORE_INT ||
+      m_opcode ==  HINS_LOAD_ICONST ||
+      m_opcode ==  HINS_LOCALADDR ||
+      m_opcode == HINS_READ_INT ||
+      m_opcode == HINS_LOAD_INT) {
+    if (ins->get_operand(idx).get_kind() == OPERAND_VREG_MEMREF || ins->get_operand(idx).get_kind() == OPERAND_VREG){
+      if(idx == 0) {
+      return 0;
+      } else {
+        return 1;
+      }
+    } else {
+      return 0;
+    }
+
+    
+  } else {
+    if (ins->get_operand(idx).get_kind() == OPERAND_VREG_MEMREF || ins->get_operand(idx).get_kind() == OPERAND_VREG){
+      return 1;
+    } else {
+      return 0;
+    }
+    
+  }
 }

@@ -12,6 +12,8 @@
 #include "highlevel.h"
 #include "lowlevelgen.h"
 #include "x86_64.h"
+#include "cfg_transform.h"
+#include "live_vregs.h"
 
 extern "C" {
 int yyparse(void);
@@ -42,33 +44,33 @@ int main(int argc, char **argv) {
   extern struct Node *g_program;
 
   int mode = COMPILE;
-  int optim = 1;
+  int optim = 0;
   int opt;
 
-  while ((opt = getopt(argc, argv, "pgsh:o")) != -1) {
+  while ((opt = getopt(argc, argv, "pgsho")) != -1) {
     switch (opt) {
-    case 'p':
-      mode = PRINT_AST;
-      break;
+      case 'p':
+        mode = PRINT_AST;
+        break;
 
-    case 'g':
-      mode = PRINT_AST_GRAPH;
-      break;
+      case 'g':
+        mode = PRINT_AST_GRAPH;
+        break;
 
-    case 's':
-      mode = PRINT_SYMBOL_TABLE;
-      break;
+      case 's':
+        mode = PRINT_SYMBOL_TABLE;
+        break;
 
-    case 'h':
-      mode = PRINT_HIGHLEVEL;
-      break;
+      case 'h':
+        mode = PRINT_HIGHLEVEL;
+        break;
 
-    case 'o':
-      optim = 1;
-      break;
+      case 'o':
+        optim = 1;
+        break;
 
-    case '?':
-      print_usage();
+      case '?':
+        print_usage();
     }
   }
  
@@ -111,7 +113,16 @@ int main(int argc, char **argv) {
     if (optim){
       HighLevelControlFlowGraphBuilder cfg_builder(code);
       ControlFlowGraph *cfg = cfg_builder.build();
-      HighLevelControlFlowGraphPrinter print_cfg(cfg);
+      LiveVregs lvreg(cfg);
+      lvreg.execute();
+
+      
+      HighLevelControlFlowGraphTransform cfg_transform(cfg, &lvreg);
+      ControlFlowGraph *new_cfg = cfg_transform.transform_cfg();
+
+      HighLevelControlFlowGraphPrinter print_cfg(new_cfg);
+      LiveVregsControlFlowGraphPrinter print_lvergs(new_cfg,  &lvreg);
+      print_lvergs.print();
       // print_cfg.print();
       // return 0;
     }
@@ -121,11 +132,12 @@ int main(int argc, char **argv) {
       print_ins.print();
     } else {
       struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, get_var_offset(get_sym_tab(ctx)), get_vreg_offset(cgt));
-
+      if (optim){
+        lowlevel_generator_set_flag(lowlevel_generator, 'o');
+      }
       generator_generate_lowlevel(lowlevel_generator);
       struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
-    
-
+  
 
       PrintX86_64InstructionSequence print_ins(lowlevel);
       print_ins.print();

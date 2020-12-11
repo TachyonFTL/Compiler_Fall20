@@ -95,8 +95,15 @@ int Operand::get_offset() const {
 std::string Operand::get_target_label() const {
   assert((m_kind & OPROP_HAS_LABEL) != 0);
   return m_target_label;
+
 }
 
+void Operand::set_m_reg_to_alloc(int m_reg){
+  m_reg_to_alloc = m_reg;
+}
+int Operand::get_m_reg_to_alloc(){
+  return m_reg_to_alloc;
+}
 ////////////////////////////////////////////////////////////////////////
 // Instruction implementation
 ////////////////////////////////////////////////////////////////////////
