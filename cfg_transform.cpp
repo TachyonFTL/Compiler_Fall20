@@ -26,11 +26,8 @@ ControlFlowGraph *ControlFlowGraphTransform::transform_cfg() {
   std::map<BasicBlock *, BasicBlock *> block_map;
 
   // iterate over all basic blocks, transforming each one
-  int xix = 0;
   for (auto i = m_cfg->bb_begin(); i != m_cfg->bb_end(); i++) {
     BasicBlock *orig = *i;
-    // std::cout << xix << std::endl;
-    xix ++;
     // transform the instructions
     InstructionSequence *result_iseq = transform_basic_block(orig);
 
@@ -66,12 +63,14 @@ ControlFlowGraph *ControlFlowGraphTransform::transform_cfg() {
 HighLevelControlFlowGraphTransform::HighLevelControlFlowGraphTransform(ControlFlowGraph *cfg, LiveVregs *lvreg)
 : ControlFlowGraphTransform(cfg){
   this->lvreg = lvreg;
+  m_cfg = cfg;
 }
 
 HighLevelControlFlowGraphTransform::~HighLevelControlFlowGraphTransform(){
 
 }
 
+// alloc mreg to vreg
 InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(BasicBlock *bb){
   //std::cout << "enter basic block transform" << std::endl;
   auto it = bb->begin();
@@ -80,8 +79,6 @@ InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(B
   InstructionSequence *new_iseq = new InstructionSequence();
   int num_operand;
   Operand reg_0, reg_1;
-
-  std::vector<int> deleted;
 
   while(it != bb->end()){
     ins = *it;
@@ -93,19 +90,23 @@ InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(B
       
         Operand *op = &(*new_ins)[i];
 
-        if (op->get_kind() == OPERAND_VREG || op->get_kind() == OPERAND_VREG_MEMREF_OFFSET) {
-          
+        // check if op is a vreg
+        if (op->get_kind() == OPERAND_VREG || op->get_kind() == OPERAND_VREG_MEMREF || op->get_kind() == OPERAND_VREG_MEMREF_OFFSET) {
+
+            // vreg not alloc a mreg
             if (vreg_mreg.find(op->get_base_reg()) == vreg_mreg.end()){
               if (mreg_alloc < mreg_aval) {
                 op->set_m_reg_to_alloc(free_mreg.back());
-                // std::cout << "vreg: " << op->get_base_reg() << "mreg: " << free_mreg.back() << "op_reg: " << op->get_m_reg_to_alloc() << std::endl;
-                
+
                 vreg_mreg.insert({op->get_base_reg(), free_mreg.back()});
                 free_mreg.pop_back();
                 mreg_alloc++;
 
                 max_mreg_use = (max_mreg_use>mreg_alloc)?max_mreg_use:mreg_alloc;
+
+                // already alloc
               } else {
+                // op with the same id, alloc a same mreg
                 if (visited.find(op->get_base_reg()) == visited.end()) {
                   visited.insert(op->get_base_reg());
                   vreg_count++;
@@ -117,6 +118,8 @@ InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(B
         }
       } 
     new_iseq->add_instruction(new_ins);
+    
+    // check if any mreg can be reused
     reset_mreg_after_ins(bb, ins);
     it++;
   }
@@ -124,60 +127,14 @@ InstructionSequence *HighLevelControlFlowGraphTransform::transform_basic_block(B
   return new_iseq;
 }
 
-
-
-void HighLevelControlFlowGraphTransform::peephole(Operand m_reg, Operand v_reg, InstructionSequence::iterator it, 
-                                               InstructionSequence::iterator end, std::vector<int> *deleted)
-{
-  Instruction* ins;
-  int m_opcode;
-  Operand reg_0, reg_1;
-
-  while (it != end){
-    ins = *it;
-    m_opcode = ins->get_opcode();
-
-    if (m_opcode == MINS_MOVQ){ 
-      reg_0 = ins->get_operand(0);  
-      reg_1 = ins->get_operand(1);
-
-      if (reg_1.get_kind() == OPERAND_MREG && reg_1.get_int_value() == m_reg.get_int_value()){
-        break;
-      } else if(reg_1.get_kind() == OPERAND_MREG_MEMREF_OFFSET && reg_1.get_base_reg() == v_reg.get_base_reg() 
-                && reg_1.get_offset() == v_reg.get_offset()){
-        break;
-      }
-
-      // a.insert(a.end(), b.begin(), b.end());
-      
-
-    } else if (m_opcode == MINS_ADDQ || m_opcode == MINS_IMULQ){
-      reg_0 = ins->get_operand(0);  
-      reg_1 = ins->get_operand(1);
-
-      if (reg_1.get_kind() == OPERAND_MREG && reg_1.get_int_value() == m_reg.get_int_value()){
-        break;
-      } 
-      
-    } else if (m_opcode == MINS_SUBQ) {
-      reg_0 = ins->get_operand(0);  
-      reg_1 = ins->get_operand(1);
-
-      if (reg_0.get_kind() == OPERAND_MREG && reg_0.get_int_value() == m_reg.get_int_value()){
-        break;
-      } else if(reg_0.get_kind() == OPERAND_MREG_MEMREF_OFFSET && reg_0.get_base_reg() == v_reg.get_base_reg() 
-                && reg_0.get_offset() == v_reg.get_offset()){
-        break;
-      }
-    }
-    it++;
-  }
-}
-
+// check dead vreg 
 void HighLevelControlFlowGraphTransform::reset_mreg_after_ins(BasicBlock *bb, Instruction *ins){
   LiveVregs::LiveSet live_set = lvreg->get_fact_after_instruction(bb, ins);
+  LiveVregs::LiveSet live_set_global;
   std::set<int> live_vreg;
+  std::set<int> live_vreg_global;
 
+  // live vreg after a ins
   for (unsigned i = 0; i < LiveVregs::MAX_VREGS; i++) {
     if (live_set.test(i)) {
       live_vreg.insert(i);
@@ -185,11 +142,30 @@ void HighLevelControlFlowGraphTransform::reset_mreg_after_ins(BasicBlock *bb, In
   }
 
   std::map<int, int>::iterator it = vreg_mreg.begin();
+
+  // iterate all alive vreg
   while (it != vreg_mreg.end()) {
+
     if (live_vreg.count(it->first) == 0) { 
+      int flag, start;
+      // check if another basic block needs the vreg
+      for (auto i = m_cfg->bb_begin(); i != m_cfg->bb_end(); i++) {
+        if (*i == bb) {
+          start = 1; // mark current bb
+        } else if (start == 1) {
+          live_set_global = lvreg->get_fact_at_beginning_of_block(*i);
+          if (live_set_global.test(it->first)){
+            flag = 1;
+          }
+        }
+      }
+      // vreg is dead, realloc its mreg
+      if (flag != 1){
         free_mreg.push_back(it->second);
         vreg_mreg.erase(it);
         mreg_alloc--;
+      }
+
     }
     it ++;
   }

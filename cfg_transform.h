@@ -42,14 +42,16 @@ public:
   virtual ~HighLevelControlFlowGraphTransform();
 
   virtual InstructionSequence *transform_basic_block(BasicBlock *bb);
+
+  // reset mreg alloc
   void reset_mreg_after_ins(BasicBlock *bb, Instruction *ins);
 
-  void peephole(Operand m_reg, Operand v_reg, InstructionSequence::iterator it, InstructionSequence::iterator end, std::vector<int> *deleted);
-
+  // get max num of vreg used 
   int get_vreg_count() {
     return vreg_count;
   }
 
+  // get max num of mreg used 
   int get_max_mreg_use() {
     return max_mreg_use;
   }

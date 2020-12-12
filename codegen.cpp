@@ -234,16 +234,10 @@ void CodeGenerator::visit_var_ref(struct Node *ast){
   
   // check if the var is a constant or a real variable
   if (this->symtable->get_symbol(ast->get_str())->get_kind() == KIND_CONST){
-    if (this->flag == 'o'){
-      immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_const_val());
-      ast->set_oprand(immval);
-      ast->set_const();
-    } else {
-      immval = new Operand(ast->get_str(), true);
-      oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
-      this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
-      ast->set_oprand(oprand);
-    }
+    
+    immval = new Operand(OPERAND_INT_LITERAL, this->symtable->get_symbol(ast->get_str())->get_const_val());
+    ast->set_oprand(immval);
+    ast->set_const();
     
     // this->code->add_instruction(new Instruction(HINS_LOAD_ICONST, *oprand, *immval));
   } else {
@@ -527,17 +521,11 @@ void CodeGenerator::visit_negate(struct Node *ast){
 }
 
 void CodeGenerator::visit_int_literal(struct Node *ast){
-  if (this->flag == 'o'){
-    struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_ival());
-    ast->set_oprand(immval);
-    ast->set_const();
-  } else {
-    struct Operand* reg = new Operand(OPERAND_VREG, this->alloc_vreg());
-    struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_ival());
-    ast->set_oprand(reg);
-    Instruction *ins = new Instruction(HINS_LOAD_ICONST, *reg, *immval);
-    this->code->add_instruction(ins);
-  }
+  
+  struct Operand* immval = new Operand(OPERAND_INT_LITERAL, ast->get_ival());
+  ast->set_oprand(immval);
+  ast->set_const();
+
   // struct Operand* reg = new Operand(OPERAND_VREG, this->alloc_vreg());
  
   
@@ -662,6 +650,9 @@ void CodeGenerator::visit_while(struct Node *ast){
   ins = new Instruction(get_jmp_ins(cond, 0), *iftrue_label);
   this->code->add_instruction(ins);
 
+  //this->code->define_label(label_2);
+  //Instruction *ins_empty = new Instruction(HINS_EMPTY);
+  //this->code->add_instruction(ins_empty);
 }
 
 // visit a compare statement

@@ -110,8 +110,8 @@ int is_use(Instruction *ins, int idx){
       m_opcode ==  HINS_INT_MUL ||
       m_opcode ==  HINS_INT_DIV ||
       m_opcode ==  HINS_INT_MOD ||
-      m_opcode ==  HINS_MOV ||
-      m_opcode ==  HINS_STORE_INT ||
+      
+      
       m_opcode ==  HINS_LOAD_ICONST ||
       m_opcode ==  HINS_LOCALADDR ||
       m_opcode == HINS_READ_INT ||

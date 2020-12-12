@@ -115,40 +115,45 @@ int main(int argc, char **argv) {
     int mreg_count = 0;
 
     if (optim){
+      // build cfg and analyze live vreg
       HighLevelControlFlowGraphBuilder cfg_builder(code);
       ControlFlowGraph *cfg = cfg_builder.build();
       LiveVregs lvreg(cfg);
       lvreg.execute();
 
-      
+      // perform optim
       HighLevelControlFlowGraphTransform cfg_transform(cfg, &lvreg);
       ControlFlowGraph *new_cfg = cfg_transform.transform_cfg();
+      code = new_cfg->create_instruction_sequence();
 
+      // get vreg mreg count
       vreg_count = cfg_transform.get_vreg_count();
       mreg_count = cfg_transform.get_max_mreg_use();
 
-      HighLevelControlFlowGraphPrinter print_cfg(new_cfg);
-      LiveVregsControlFlowGraphPrinter print_lvergs(new_cfg,  &lvreg);
+      // Printer for debug use
+
+      // HighLevelControlFlowGraphPrinter print_cfg(new_cfg);
+      // LiveVregsControlFlowGraphPrinter print_lvergs(new_cfg,  &lvreg);
       // print_lvergs.print();
-      // print_cfg.print();
-      // return 0;
-      code = new_cfg->create_instruction_sequence();
+      
     }
     
-
-
+    // print highlevel mode
     if (mode == PRINT_HIGHLEVEL) {
       PrintHighLevelInstructionSequence print_ins(code);
       print_ins.print();
     } else {
+      // init lowlevel translator
       struct InstructionVisitor *lowlevel_generator = lowlevel_code_generator_create(code, var_offset, vreg_count, mreg_count);
+      
       if (optim){
+        // set optim flag
         lowlevel_generator_set_flag(lowlevel_generator, 'o');
       } 
 
+      // translate to low level
       generator_generate_lowlevel(lowlevel_generator);
       struct InstructionSequence *lowlevel = generate_lowlevel(lowlevel_generator);
-  
 
       PrintX86_64InstructionSequence print_ins(lowlevel);
       print_ins.print();
