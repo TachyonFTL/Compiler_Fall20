@@ -18,7 +18,7 @@ int yylex(void);
   struct Node *node;
 }
 
-%token<node> TOK_IDENT TOK_INT_LITERAL TOK_FUNCTION TOK_FUNC
+%token<node> TOK_IDENT TOK_INT_LITERAL TOK_FUNCTION TOK_FUNC TOK_RET
 
 %token<node> TOK_PROGRAM TOK_BEGIN TOK_END TOK_CONST TOK_TYPE TOK_VAR
 %token<node> TOK_ARRAY TOK_OF TOK_RECORD TOK_DIV TOK_MOD TOK_IF
@@ -36,7 +36,7 @@ int yylex(void);
 %type<node> typedecl typedefn_list typedefn vardecl type vardefn_list vardefn funcdecl
 %type<node> expression term factor primary function_call
 %type<node> opt_instructions instructions instruction
-%type<node> assignstmt ifstmt repeatstmt whilestmt condition writestmt readstmt
+%type<node> assignstmt ifstmt repeatstmt whilestmt condition writestmt readstmt retstmt
 %type<node> designator identifier_list expression_list
 
 %left TOK_PLUS TOK_MINUS
@@ -56,7 +56,7 @@ functions
   ;
 
 function
-  : TOK_FUNCTION TOK_IDENT TOK_SEMICOLON opt_declarations TOK_BEGIN opt_instructions TOK_END { $$ = node_build3(AST_FUNCTION, $2, $4, $6); }
+  : TOK_FUNCTION TOK_IDENT TOK_SEMICOLON opt_declarations TOK_BEGIN opt_instructions retstmt TOK_END { $$ = node_build4(AST_FUNCTION, $2, $4, $6, $7); }
   ;
 
 opt_declarations
@@ -115,8 +115,8 @@ typedecl
   ;
 
 funcdecl
-  : TOK_FUNC TOK_IDENT TOK_LPAREN /* epsilon */ TOK_RPAREN TOK_SEMICOLON { $$ = node_build1(AST_FUNC_TYPE, $2); }
-  | TOK_FUNC TOK_IDENT TOK_LPAREN vardefn_list TOK_RPAREN TOK_SEMICOLON { $$ = node_build2(AST_FUNC_TYPE, $2, $4); }
+  : TOK_FUNC TOK_IDENT TOK_LPAREN /* epsilon */ TOK_RPAREN TOK_COLON type TOK_SEMICOLON { $$ = node_build2(AST_FUNC_TYPE, $2, $7); }
+  | TOK_FUNC TOK_IDENT TOK_LPAREN vardefn_list TOK_RPAREN TOK_COLON type TOK_SEMICOLON { $$ = node_build3(AST_FUNC_TYPE, $2, $4, $7); }
   ;
 
 typedefn_list
@@ -161,6 +161,10 @@ instruction
   | whilestmt TOK_SEMICOLON  { $$ = $1; }
   | writestmt TOK_SEMICOLON  { $$ = $1; }
   | readstmt TOK_SEMICOLON  { $$ = $1; }
+  ;
+
+retstmt
+  : TOK_RET expression TOK_SEMICOLON { $$ = node_build1(AST_RET, $2); }
   ;
 
 assignstmt

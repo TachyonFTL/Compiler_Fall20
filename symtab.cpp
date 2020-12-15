@@ -4,6 +4,8 @@
 #include "node.h"
 #include "symbol.h"
 #include "type.h"
+#include <ostream>
+#include <string>
 
 SymbolTable::SymbolTable(int level) {
   this->symtab_level = level;
@@ -90,6 +92,11 @@ void SymbolTable::add_kid(SymbolTable *kid) {
   kid->parent = this;
 }
 
+Symbol *SymbolTable::get_symbol_at_pos(unsigned int index){
+  std::string name_of_sym_at_pos = names[index];
+  return name_to_symbol.find(name_of_sym_at_pos)->second;
+}
+
 SymbolTable *SymbolTable::get_kid(unsigned int index) {
   return this->kids.at(unsigned(index));
 }
@@ -113,6 +120,10 @@ SymbolTable *SymbolTable::get_parent() {
 int get_var_offset(SymbolTable *symtab){
   return symtab->get_current_offset();
 }
+
+int SymbolTable::get_num_sym(){
+  return kids.size();
+};
 
 // Derived class Record type
 ///////////////////////////////////
@@ -159,9 +170,10 @@ int Record_type::get_size() {
 
 // Derived class Function type
 ///////////////////////////////////
-Function_type::Function_type(std::string name, SymbolTable * args): Type(name) {
+Function_type::Function_type(std::string name, SymbolTable * args, Type *t): Type(name) {
   this->args = args;
   this->kind = FUNC_TYPE;
+  this->ret_type = t;
 }
 
 Function_type::~Function_type() {
@@ -188,10 +200,14 @@ std::string Function_type::get_type_name(){
   return ret_string;
 }
 
-SymbolTable *Function_type::get_args() { 
+SymbolTable *Function_type::get_args() {
   return this->args;
 }
 
 int Function_type::get_kind() {
   return this->kind;
+}
+
+Type * Function_type::get_return_type(){
+  return ret_type;
 }

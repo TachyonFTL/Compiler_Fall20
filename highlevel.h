@@ -29,6 +29,9 @@ enum HighLevelOpcode {
   HINS_CONS_DEF,
   HINS_EMPTY,
   HINS_MOV,
+  HINS_PASS,
+  HINS_CALL,
+  HINS_RET,
 };
 
 class PrintHighLevelInstructionSequence : public PrintInstructionSequence {

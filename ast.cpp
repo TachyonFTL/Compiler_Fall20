@@ -38,6 +38,7 @@ const char *ast_get_tag_name(int ast_tag) {
   case AST_INT_LITERAL: return "int_literal";
   case AST_INSTRUCTIONS: return "instructions";
   case AST_ASSIGN: return "assign";
+  case AST_RET: return "return";
   case AST_IF: return "if";
   case AST_IF_ELSE: return "if_else";
   case AST_REPEAT: return "repeat";

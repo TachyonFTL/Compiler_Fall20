@@ -56,6 +56,10 @@ class InstructionVisitor{
     void translate_mod(Instruction *ins);
     void translate_mov(Instruction *ins);
 
+    void translate_call(Instruction *ins);
+    void translate_return(Instruction *ins);
+    void translate_pass(Instruction *ins);
+
     void move_first(Instruction *ins, int operand_idx, struct Operand *reg_0, int *reg_0_constant = nullptr);
     void move_second(Instruction *ins, int operand_idx, struct Operand *reg_1, int reg_0_constant = 0);
 
@@ -87,6 +91,9 @@ class InstructionVisitor{
                                                      {HINS_JNE, &InstructionVisitor::translate_jne},
                                                      {HINS_JUMP, &InstructionVisitor::translate_jump},
                                                      {HINS_MOV, &InstructionVisitor::translate_mov},
+                                                     {HINS_CALL, &InstructionVisitor::translate_call},
+                                                     {HINS_RET, &InstructionVisitor::translate_return},
+                                                     {HINS_PASS, &InstructionVisitor::translate_pass},
                                                      };
     
     // get the real memory reference of a vreg
@@ -99,7 +106,6 @@ class InstructionVisitor{
     struct Operand r11 = Operand(OPERAND_MREG, MREG_R11);
     struct Operand rax = Operand(OPERAND_MREG, MREG_RAX);
     
-
     struct Operand rdx = Operand(OPERAND_MREG, MREG_RDX);
     struct Operand eax = Operand(OPERAND_MREG, MREG_EAX);
 
@@ -179,7 +185,7 @@ void InstructionVisitor::translate(){
   
   // allocate spaces on stack
   if (flag == 'o'){
-    for(int i = 7; i >= 8 - _mreg_count; i--){
+    for(int i = 7; i >= ((_mreg_count <= 5)?(8 - _mreg_count):3); i--){
       Instruction *pushq = new Instruction(MINS_PUSHQ, idx_to_register[i]);
       low_level->add_instruction(pushq);
       rsp_offset += 8;
@@ -215,7 +221,7 @@ void InstructionVisitor::translate(){
   low_level->add_instruction(addq);
   
   if (flag == 'o'){
-    for(int i = 8 - _mreg_count; i <= 7; i++){
+    for(int i = ((_mreg_count <= 5)?(8 - _mreg_count):3); i <= 7; i++){
       Instruction *popq = new Instruction(MINS_POPQ, idx_to_register[i]);
       low_level->add_instruction(popq);
       rsp_offset -= 8;
@@ -804,6 +810,41 @@ void InstructionVisitor::translate_jne(Instruction *ins){
   Instruction *jmp = new Instruction(MINS_JNE, ins->get_operand(0));
   low_level->add_instruction(jmp);
 }
+
+void InstructionVisitor::translate_call(Instruction *ins){
+  Instruction *move_int, *move_finl;
+  Operand reg, targe_reg;
+
+  /* if(flag == 'o'){
+    int mreg_alloc = 0;
+    int mreg_alloc_target = 0;
+    reg = vreg_ref(ins->get_operand(1), 0, &mreg_alloc);
+    targe_reg = vreg_ref(ins->get_operand(0), 0, &mreg_alloc_target);
+    if (mreg_alloc) {
+      move_finl = new Instruction(MINS_MOVQ, reg, targe_reg);
+      low_level->add_instruction(move_finl);
+    } else {
+      if (ins->get_operand(1).get_kind() == OPERAND_INT_LITERAL) {
+        move_finl = new Instruction(MINS_MOVQ, reg, targe_reg); 
+      } else {
+        move_int = new Instruction(MINS_MOVQ, reg, r10);
+        move_finl = new Instruction(MINS_MOVQ, r10, targe_reg); 
+        low_level->add_instruction(move_int);
+      }
+      low_level->add_instruction(move_finl);
+    }
+  } else  { */
+  move_int = new Instruction(MINS_MOVQ, vreg_ref(ins->get_operand(1)), r10);
+  move_finl = new Instruction(MINS_MOVQ, r10, vreg_ref(ins->get_operand(0)));
+  low_level->add_instruction(move_int);
+  low_level->add_instruction(move_finl);
+  /* } */
+}
+
+void InstructionVisitor::translate_return(Instruction *ins){
+
+}
+
 
 // get var reference to a vreg
 struct Operand InstructionVisitor::vreg_ref(Operand vreg, int bias, int *flg, int force){

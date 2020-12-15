@@ -37,12 +37,20 @@ SymbolTable *Type::get_field(){
   return nullptr;
 }
 
+SymbolTable *Type::get_args(){
+  return nullptr;
+}
+
 void Type::set_size(int size){
   this->size = size;
 }
 
 int Type::get_size(){
   return this->size;
+}
+
+Type *Type::get_return_type(){
+  return nullptr;
 }
 
 // Derived class Array type

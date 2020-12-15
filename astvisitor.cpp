@@ -139,6 +139,9 @@ void ASTVisitor::visit(struct Node *ast) {
   case AST_FUNC_TYPE: 
     visit_function_type(ast);
     break;
+  case AST_RET:
+    visit_return(ast);
+    break;
   default:
     assert(false); // unknown AST node type
   }
@@ -309,6 +312,10 @@ void ASTVisitor::visit_function_type(struct Node *ast){
 }
 
 void ASTVisitor::visit_function_call(struct Node *ast){
+  recur_on_children(ast);
+}
+
+void ASTVisitor::visit_return(struct Node *ast){
   recur_on_children(ast);
 }
 

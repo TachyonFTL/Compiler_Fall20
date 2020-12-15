@@ -48,6 +48,10 @@ private:
                                         {AST_COMPARE_EQ,  HINS_JE}, {AST_COMPARE_NEQ, HINS_JNE}};
 
   void visit_instructions(struct Node *ast);
+
+  void visit_function(struct Node *ast);
+  void visit_function_call(struct Node *ast);
+
   void visit_constant_def(struct Node *ast);
   void visit_read(struct Node *ast);
   void visit_write(struct Node *ast);
@@ -73,6 +77,8 @@ private:
   void visit_if_else(struct Node *ast);
   void visit_repeat(struct Node *ast);
   void visit_while(struct Node *ast);
+
+  void visit_return(struct Node *ast);
 
   int get_jmp_ins(struct Node *ast, bool invert = 1);
 
@@ -102,11 +108,57 @@ void CodeGenerator::set_flag(char flg){
 
 void CodeGenerator::generate_code(){
   visit(node_get_kid(this->root, 1));
-  return visit_instructions(node_get_kid(this->root, 2));
+  
+  this->code->define_label("main");
+  visit_instructions(node_get_kid(this->root, 2));
+  if (node_get_num_kids(this->root) == 4 ){
+    visit_functions(node_get_kid(this->root, 3));
+  }
 }
 
-InstructionSequence * CodeGenerator::get_code(){
+InstructionSequence *CodeGenerator::get_code(){
   return this->code;
+}
+
+void CodeGenerator::visit_function(struct Node *ast){
+  
+  std::string func_name = node_get_str(node_get_kid(ast, 0));
+
+  struct Operand *function_label = new Operand(func_name);
+  ast->set_oprand(function_label);
+  this->code->define_label(func_name);
+
+  this->symtable = this->symtable->get_symbol(func_name)->get_type()->get_args();
+
+  visit_instructions(node_get_kid(ast, 2));
+  visit_return(node_get_kid(ast, 3));
+
+  this->symtable = this->symtable->get_parent();
+}
+
+void CodeGenerator::visit_function_call(struct Node *ast){
+  visit_expression_list(node_get_kid(ast, 1));
+
+  Node *expression = node_get_kid(ast, 1);
+  Operand *arg;
+
+  while(node_get_num_kids(expression) >= 0) {
+    arg = expression->get_oprand();
+    this->code->add_instruction(new Instruction(HINS_PASS, *arg));
+    if (node_get_num_kids(expression) > 1){
+      expression = node_get_kid(expression, 1);
+    } else {
+      break;
+    }
+  }
+  
+  std::string func_name = node_get_str(node_get_kid(ast, 0));
+
+  Operand *function_op = new Operand(func_name);
+  Operand *function_target = new Operand(OPERAND_VREG, this->alloc_vreg());
+
+  this->code->add_instruction(new Instruction(HINS_CALL, *function_target, *function_op));
+  ast->set_oprand(function_target);
 }
 
 // visit constant definitions
@@ -166,10 +218,6 @@ void CodeGenerator::visit_instructions(struct Node *ast){
       error_at_node(instruction, "visit_instructions: Unknown Instruction");
   }
   
-  // rest allocated vreg
-  // this->rest_vreg();
-
-  // recursively visit subsequent instructions
   if(num_kids == 2){
     return visit_instructions(node_get_kid(ast, 1));
   }
@@ -410,6 +458,8 @@ void CodeGenerator::visit_expression(struct Node *ast){
       return visit_array_element_ref(ast);
     case AST_FIELD_REF:
       return visit_field_ref(ast);
+    case AST_FUNCTION_CAL:
+      return visit_function_call(ast);
   }
 
   // biary expression
@@ -650,9 +700,32 @@ void CodeGenerator::visit_while(struct Node *ast){
   ins = new Instruction(get_jmp_ins(cond, 0), *iftrue_label);
   this->code->add_instruction(ins);
 
-  //this->code->define_label(label_2);
-  //Instruction *ins_empty = new Instruction(HINS_EMPTY);
-  //this->code->add_instruction(ins_empty);
+}
+
+void CodeGenerator::visit_return(struct Node *ast){
+  struct Node* expression = node_get_kid(ast, 0);
+  
+  Operand *exp_oprand;
+
+  visit_expression(expression);
+  
+  if (expression->is_const() == 1){
+    exp_oprand = expression->get_oprand();
+  } else {
+    int tag = node_get_tag(expression);
+    // check if it is a memory reference
+    if (tag == AST_VAR_REF) {
+      exp_oprand = expression->get_oprand();
+    } else if (tag == AST_ARRAY_ELEMENT_REF || tag == AST_FIELD_REF){
+      Operand *exp_result = new Operand(OPERAND_VREG_MEMREF, expression->get_oprand()->get_base_reg());
+      exp_oprand = new Operand(OPERAND_VREG, this->alloc_vreg());
+      this->code->add_instruction(new Instruction(HINS_LOAD_INT, *exp_oprand, *exp_result));
+    } else {
+      exp_oprand = new Operand(OPERAND_VREG, expression->get_oprand()->get_base_reg());
+    }
+  }
+
+  this->code->add_instruction(new Instruction(HINS_RET, *exp_oprand));
 }
 
 // visit a compare statement

@@ -73,6 +73,8 @@ private:
   void visit_field_ref(struct Node *ast);
   void visit_array_element_ref(struct Node *ast);
 
+  void visit_function(struct Node *ast);
+
   // get the string representations of identifiers
   tuple_node_string get_identifier_list(struct Node *ast);
   
@@ -84,7 +86,9 @@ private:
   Type *eval_named_type(struct Node *ast);
   Type *eval_array_type(struct Node *ast, std::string name);
   Type *eval_record_type(struct Node *ast, std::string name);
-  Type *eval_func_type(struct Node *ast, std::string name);
+  Type *eval_func_type(struct Node *ast, std::string name, Type * t);
+
+  Type *eval_func_call(struct Node *ast);
 
   // evaluate constant expressions
   int eval_const_expr(struct Node *ast);
@@ -96,8 +100,14 @@ private:
 // print sysmbo if flag is set to 's'
 inline void print_symbol(char flag, int level, Symbol *sym) {
   if (flag == 's') {
-    std::cout << level << ',' << sym->get_kind_name() << ',' \
-    << sym->get_name() << ',' << sym->get_type_name() << ',' << sym->get_offset() << std::endl; 
+    if (sym->get_kind() != KIND_FUNC){
+      std::cout << level << ',' << sym->get_kind_name() << ',' \
+      << sym->get_name() << ',' << sym->get_type_name() << ',' << sym->get_offset() << std::endl; 
+    } else {
+      std::cout << level << ',' << sym->get_kind_name() << ',' \
+      << sym->get_name() << ',' << sym->get_type_name() << " -> " << sym->get_type()->get_return_type()->get_type_name() << ',' << sym->get_offset()  << std::endl; 
+    }
+
   }
 }
 
@@ -201,11 +211,32 @@ void SymbolTableBuilder::visit_type_def(struct Node *ast) {
 void SymbolTableBuilder::visit_function_type(struct Node *ast){
   struct Node *args = node_get_kid(ast, 1);
   std::string name = node_get_str(node_get_kid(ast, 0));
+  struct Node *type = node_get_kid(ast, 2);
 
-  Symbol *sym = new Symbol(name, KIND_FUNC, eval_func_type(args, name));
+  Symbol *sym = new Symbol(name, KIND_FUNC, eval_func_type(args, name, eval_named_type(type)));
   
   this->current_table->insert_symbol(name, sym, node_get_kid(ast, 0));
   print_symbol(this->flag, this->current_table->get_level(), sym);
+}
+
+void SymbolTableBuilder::visit_function(struct Node *ast){
+
+  // check if function is declred
+  Symbol *sym = this->current_table->get_symbol(node_get_str(node_get_kid(ast, 0)));
+
+  if (sym == nullptr) {
+    error_at_node(ast, "Undefined function reference");
+  }
+
+  SymbolTable *new_func = this->current_table->get_symbol(node_get_str(node_get_kid(ast, 0)))->get_type()->get_args();
+  this->current_table->add_kid(new_func);
+  this->current_table = new_func;
+
+  recur_on_children(ast);
+
+  // set symtable back to the parent level
+  this->current_table = this->current_table->get_parent();
+
 }
 
 void SymbolTableBuilder::visit_field_ref(struct Node *ast){
@@ -300,7 +331,7 @@ Type *SymbolTableBuilder::eval_record_type(struct Node *ast, std::string name) {
 }
 
 // evaluate func type def
-Type *SymbolTableBuilder::eval_func_type(struct Node *ast, std::string name) {
+Type *SymbolTableBuilder::eval_func_type(struct Node *ast, std::string name, Type * t) {
   // build a new symtable for function arguments
   SymbolTable *args = new SymbolTable(this->current_table->get_level() + 1);
   this->current_table->add_kid(args);
@@ -308,11 +339,10 @@ Type *SymbolTableBuilder::eval_func_type(struct Node *ast, std::string name) {
 
   visit_var_declarations(ast);
 
+  Type *new_type = new Function_type(name, args, t);
   // set symtable back to the parent level
   this->current_table = this->current_table->get_parent();
 
-  Type *new_type = new Function_type(name, args);
-  
   return new_type;
 }
 
@@ -427,10 +457,40 @@ Type *SymbolTableBuilder::eval_expr_type(struct Node *ast) {
         }
 
       }
+    case AST_FUNCTION_CAL:
+      return eval_func_call(ast);
     default:
       error_at_node(ast, "Unrecognized expr");
       return nullptr;
   }
+}
+
+// evaluate if a func call is valid
+Type * SymbolTableBuilder::eval_func_call(struct Node *ast) {
+  std::string name = node_get_str(node_get_kid(ast, 0));
+
+  Symbol *sym = this->current_table->get_symbol(name);
+
+  if (sym == nullptr) {
+    error_at_node(ast, "Undefined function reference");
+    return nullptr;
+  }
+
+  SymbolTable *func_arguments = sym->get_type()->get_args();
+
+  std::vector<Type*> arg_list = eval_expr_list_type(node_get_kid(ast, 1));
+  std::vector<Type*>::iterator it;
+
+  int arg_idx = 0;
+  for(it = arg_list.begin(); it != arg_list.end(); ++it){
+    if (func_arguments->get_symbol_at_pos(arg_idx) != nullptr) {
+      arg_idx ++;
+    } else {
+      error_at_node(node_get_kid(ast, 1), "Too many arguments for function");
+    }
+  }
+
+  return sym->get_type()->get_return_type();
 }
 
 // evaluate assignemnt statement

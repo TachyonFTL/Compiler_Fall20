@@ -42,6 +42,9 @@ public:
   virtual void set_size(int size);
   virtual int get_size();
 
+  // for function type
+  virtual SymbolTable *get_args();
+  virtual Type *get_return_type();
 };
 
 // Derived class Array type

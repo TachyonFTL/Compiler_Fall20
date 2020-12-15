@@ -33,6 +33,9 @@ std::string PrintHighLevelInstructionSequence::get_opcode_name(int opcode) {
   case HINS_CONS_DEF:    return "const";
   case HINS_EMPTY:       return "";
   case HINS_MOV:         return "mov";
+  case HINS_PASS:        return "pass";
+  case HINS_CALL:        return "call";
+  case HINS_RET:         return "return";
   default:
     assert(false);
     return "<invalid>";

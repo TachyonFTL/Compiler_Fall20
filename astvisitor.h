@@ -50,6 +50,7 @@ public:
   virtual void visit_function(struct Node *ast);
   virtual void visit_function_call(struct Node *ast);
   virtual void visit_function_type(struct Node *ast);
+  virtual void visit_return(struct Node *ast);
   
   virtual void recur_on_children(struct Node *ast);
 };

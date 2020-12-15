@@ -35,6 +35,8 @@ public:
   Symbol *get_symbol_in_scope(std::string name); //get a symbol only from the current scope (for field reference)
   Symbol *get_symbol(std::string name);
 
+  Symbol *get_symbol_at_pos(unsigned int index);
+
   // get all symbols in current scope
   std::vector<std::string> get_all_names();
 
@@ -47,6 +49,7 @@ public:
 
   void print();
   int get_level();
+  int get_num_sym();
   int get_current_offset();
 
 private:
@@ -83,13 +86,17 @@ class Function_type: public Type {
 private:
   SymbolTable *args; // similar to Record type
   Type_kind kind;
+  Type *ret_type;
 
 public:
-  Function_type(std::string name, SymbolTable *args);
+  Function_type(std::string name, SymbolTable *args, Type *t);
   ~Function_type();
 
   // get this the string representation of this type name
   std::string get_type_name();
+
+  // get the the return type
+  Type * get_return_type();
 
   // get the arguments
   SymbolTable *get_args();
