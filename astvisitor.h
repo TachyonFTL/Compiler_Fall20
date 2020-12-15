@@ -46,7 +46,11 @@ public:
   virtual void visit_identifier_list(struct Node *ast);
   virtual void visit_expression_list(struct Node *ast);
   virtual void visit_identifier(struct Node *ast);
-
+  virtual void visit_functions(struct Node *ast);    
+  virtual void visit_function(struct Node *ast);
+  virtual void visit_function_call(struct Node *ast);
+  virtual void visit_function_type(struct Node *ast);
+  
   virtual void recur_on_children(struct Node *ast);
 };
 

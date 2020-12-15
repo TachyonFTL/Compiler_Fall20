@@ -127,6 +127,18 @@ void ASTVisitor::visit(struct Node *ast) {
   case NODE_TOK_IDENT:
     visit_identifier(ast);
     break;
+  case AST_FUNCTIONS: 
+    visit_functions(ast);
+    break;
+  case AST_FUNCTION:
+    visit_function(ast);
+    break;
+  case AST_FUNCTION_CAL: 
+    visit_function_call(ast);
+    break;
+  case AST_FUNC_TYPE: 
+    visit_function_type(ast);
+    break;
   default:
     assert(false); // unknown AST node type
   }
@@ -283,6 +295,23 @@ void ASTVisitor::visit_expression_list(struct Node *ast) {
 void ASTVisitor::visit_identifier(struct Node *ast) {
   recur_on_children(ast); // default behavior
 }
+
+void ASTVisitor::visit_functions(struct Node *ast){
+  recur_on_children(ast);
+} 
+
+void ASTVisitor::visit_function(struct Node *ast){
+  recur_on_children(ast);
+}
+
+void ASTVisitor::visit_function_type(struct Node *ast){
+  recur_on_children(ast);
+}
+
+void ASTVisitor::visit_function_call(struct Node *ast){
+  recur_on_children(ast);
+}
+
 
 void ASTVisitor::recur_on_children(struct Node *ast) {
   int num_kids = node_get_num_kids(ast);

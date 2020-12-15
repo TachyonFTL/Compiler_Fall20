@@ -42,6 +42,9 @@ void yyerror(const char *fmt, ...);
 "READ"                   { return create_token(TOK_READ, yytext); }
 "WRITE"                  { return create_token(TOK_WRITE, yytext); }
 
+"FUNCTION"               { return create_token(TOK_FUNCTION, yytext); }
+"FUNC"               { return create_token(TOK_FUNC, yytext); }
+
 [A-Za-z_][A-Za-z_0-9]*   { return create_token(TOK_IDENT, yytext); }
 
 [0-9]+                   { return create_token(TOK_INT_LITERAL, yytext); }

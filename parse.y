@@ -18,7 +18,7 @@ int yylex(void);
   struct Node *node;
 }
 
-%token<node> TOK_IDENT TOK_INT_LITERAL
+%token<node> TOK_IDENT TOK_INT_LITERAL TOK_FUNCTION TOK_FUNC
 
 %token<node> TOK_PROGRAM TOK_BEGIN TOK_END TOK_CONST TOK_TYPE TOK_VAR
 %token<node> TOK_ARRAY TOK_OF TOK_RECORD TOK_DIV TOK_MOD TOK_IF
@@ -31,10 +31,10 @@ int yylex(void);
 %token<node> TOK_RPAREN TOK_LBRACKET TOK_RBRACKET TOK_DOT TOK_COMMA
 
 %type<node> program
-
+%type<node> functions function
 %type<node> opt_declarations declarations declaration constdecl constdefn_list constdefn
-%type<node> typedecl typedefn_list typedefn vardecl type vardefn_list vardefn
-%type<node> expression term factor primary
+%type<node> typedecl typedefn_list typedefn vardecl type vardefn_list vardefn funcdecl
+%type<node> expression term factor primary function_call
 %type<node> opt_instructions instructions instruction
 %type<node> assignstmt ifstmt repeatstmt whilestmt condition writestmt readstmt
 %type<node> designator identifier_list expression_list
@@ -47,7 +47,16 @@ int yylex(void);
 /* TODO: add grammar productions */
 
 program
-  : TOK_PROGRAM TOK_IDENT TOK_SEMICOLON opt_declarations TOK_BEGIN opt_instructions TOK_END TOK_DOT  { g_program = $$ = node_build3(AST_PROGRAM, $2, $4, $6); }
+  : TOK_PROGRAM TOK_IDENT TOK_SEMICOLON opt_declarations TOK_BEGIN opt_instructions TOK_END functions TOK_DOT  { g_program = $$ = node_build4(AST_PROGRAM, $2, $4, $6, $8); }
+  ;
+
+functions 
+  : function { $$ = node_build1(AST_FUNCTIONS, $1); }
+  | function functions { $$ = node_build2(AST_FUNCTIONS, $1, $2); }
+  ;
+
+function
+  : TOK_FUNCTION TOK_IDENT TOK_SEMICOLON opt_declarations TOK_BEGIN opt_instructions TOK_END { $$ = node_build3(AST_FUNCTION, $2, $4, $6); }
   ;
 
 opt_declarations
@@ -67,6 +76,7 @@ declaration
   : constdecl { $$ = $1; }
   | vardecl   { $$ = $1; }
   | typedecl  { $$ = $1; }
+  | funcdecl  { $$ = $1; }
   ;
 
 constdecl
@@ -102,6 +112,11 @@ identifier_list
 
 typedecl
   : TOK_TYPE typedefn_list  { $$ = $2; }
+  ;
+
+funcdecl
+  : TOK_FUNC TOK_IDENT TOK_LPAREN /* epsilon */ TOK_RPAREN TOK_SEMICOLON { $$ = node_build1(AST_FUNC_TYPE, $2); }
+  | TOK_FUNC TOK_IDENT TOK_LPAREN vardefn_list TOK_RPAREN TOK_SEMICOLON { $$ = node_build2(AST_FUNC_TYPE, $2, $4); }
   ;
 
 typedefn_list
@@ -184,6 +199,7 @@ condition
 
 designator 
   : TOK_IDENT  { $$ = node_alloc_str_copy(AST_VAR_REF, node_get_str($1)); node_set_source_info($$, node_get_source_info($1));}
+  | designator TOK_LPAREN expression_list TOK_RPAREN  { $$ = node_build2(AST_FUNCTION_CAL, $1, $3); }
   | designator TOK_LBRACKET expression_list TOK_RBRACKET  { $$ = node_build2(AST_ARRAY_ELEMENT_REF, $1, $3); }
   | designator TOK_DOT TOK_IDENT  { $$ = node_build2(AST_FIELD_REF, $1, $3); }
   ;

@@ -9,9 +9,10 @@ enum Symkind {
   KIND_VAR = 0,
   KIND_TYPE,
   KIND_CONST,
+  KIND_FUNC
 };
 
-const std::vector<std::string> kind_names = {"VAR", "TYPE", "CONST"}; 
+const std::vector<std::string> kind_names = {"VAR", "TYPE", "CONST", "FUNC"}; 
 
 // main class for Symbol
 class Symbol {

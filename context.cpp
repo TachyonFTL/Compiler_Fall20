@@ -65,6 +65,7 @@ public:
 private:
   void visit_constant_def(struct Node *ast);
   void visit_type_def(struct Node *ast);
+  void visit_function_type(struct Node *ast);
   void visit_var_def(struct Node *ast);
   void visit_write(struct Node *ast);
   void visit_read(struct Node *ast);
@@ -83,6 +84,7 @@ private:
   Type *eval_named_type(struct Node *ast);
   Type *eval_array_type(struct Node *ast, std::string name);
   Type *eval_record_type(struct Node *ast, std::string name);
+  Type *eval_func_type(struct Node *ast, std::string name);
 
   // evaluate constant expressions
   int eval_const_expr(struct Node *ast);
@@ -195,6 +197,17 @@ void SymbolTableBuilder::visit_type_def(struct Node *ast) {
   print_symbol(this->flag, this->current_table->get_level(), sym);
 }
 
+// visit the declartion of functions
+void SymbolTableBuilder::visit_function_type(struct Node *ast){
+  struct Node *args = node_get_kid(ast, 1);
+  std::string name = node_get_str(node_get_kid(ast, 0));
+
+  Symbol *sym = new Symbol(name, KIND_FUNC, eval_func_type(args, name));
+  
+  this->current_table->insert_symbol(name, sym, node_get_kid(ast, 0));
+  print_symbol(this->flag, this->current_table->get_level(), sym);
+}
+
 void SymbolTableBuilder::visit_field_ref(struct Node *ast){
   Type *record = eval_expr_type(node_get_kid(ast, 0));
 
@@ -282,6 +295,23 @@ Type *SymbolTableBuilder::eval_record_type(struct Node *ast, std::string name) {
   this->current_table = this->current_table->get_parent();
 
   Type *new_type = new Record_type(name, fields);
+  
+  return new_type;
+}
+
+// evaluate func type def
+Type *SymbolTableBuilder::eval_func_type(struct Node *ast, std::string name) {
+  // build a new symtable for function arguments
+  SymbolTable *args = new SymbolTable(this->current_table->get_level() + 1);
+  this->current_table->add_kid(args);
+  this->current_table = args;
+
+  visit_var_declarations(ast);
+
+  // set symtable back to the parent level
+  this->current_table = this->current_table->get_parent();
+
+  Type *new_type = new Function_type(name, args);
   
   return new_type;
 }

@@ -76,6 +76,28 @@ public:
   int get_size();
   
 };
+
+// Derived class Function type
+///////////////////////////////////
+class Function_type: public Type {
+private:
+  SymbolTable *args; // similar to Record type
+  Type_kind kind;
+
+public:
+  Function_type(std::string name, SymbolTable *args);
+  ~Function_type();
+
+  // get this the string representation of this type name
+  std::string get_type_name();
+
+  // get the arguments
+  SymbolTable *get_args();
+
+  // get the kind of this type (FUNC_TYPE)
+  int get_kind();
+  
+};
 extern "C" {
 #endif
 

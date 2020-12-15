@@ -15,6 +15,10 @@ const char *ast_get_tag_name(int ast_tag) {
 
   switch (ast_tag) {
   case AST_PROGRAM: return "program";
+  case AST_FUNCTIONS: return "functions";
+  case AST_FUNCTION: return "function";
+  case AST_FUNCTION_CAL: return "function call";
+  case AST_FUNC_TYPE: return "func_type";
   case AST_DECLARATIONS: return "declarations";
   case AST_CONSTANT_DECLARATIONS: return "constant_declarations";
   case AST_CONSTANT_DEF: return "constant_def";

@@ -113,6 +113,7 @@ SymbolTable *SymbolTable::get_parent() {
 int get_var_offset(SymbolTable *symtab){
   return symtab->get_current_offset();
 }
+
 // Derived class Record type
 ///////////////////////////////////
 Record_type::Record_type(std::string name, SymbolTable * fields): Type(name) {
@@ -156,3 +157,41 @@ int Record_type::get_size() {
   return this->fields->get_current_offset();
 }
 
+// Derived class Function type
+///////////////////////////////////
+Function_type::Function_type(std::string name, SymbolTable * args): Type(name) {
+  this->args = args;
+  this->kind = FUNC_TYPE;
+}
+
+Function_type::~Function_type() {
+
+}
+
+std::string Function_type::get_type_name(){
+  std::string ret_string = std::string("FUNCTION (");
+  std::vector<std::string> names = this->args->get_all_names();
+  std::vector<std::string>::iterator it;
+  
+  // iterate fields to get its string representation
+  int i = 0;
+  for(it = names.begin(); it != names.end(); it++, i++){
+    if(i != 0){
+      ret_string.push_back(' ');
+      ret_string.push_back('x');
+      ret_string.push_back(' ');
+    }
+    ret_string += this->args->get_symbol(*it)->get_type_name();
+  }
+
+  ret_string.push_back(')');
+  return ret_string;
+}
+
+SymbolTable *Function_type::get_args() { 
+  return this->args;
+}
+
+int Function_type::get_kind() {
+  return this->kind;
+}

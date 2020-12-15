@@ -8,7 +8,8 @@
 enum Type_kind {
   BASE_TYPE = 0,
   ARRAY_TYPE,
-  RECORD_TYPE
+  RECORD_TYPE,
+  FUNC_TYPE
 };
 
 // Base class for TYPE
